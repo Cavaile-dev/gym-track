@@ -1,0 +1,16 @@
+services:
+  gym-track:
+    build: .
+    container_name: gym-track
+    restart: unless-stopped
+    ports:
+      - "${GYM_TRACK_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_PATH: /data/gym-track.sqlite
+    volumes:
+      - gym-track-data:/data
+
+volumes:
+  gym-track-data:
