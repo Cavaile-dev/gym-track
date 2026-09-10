@@ -97,13 +97,14 @@ label { display: grid; gap: 8px; color: #dce4de; font-size: .78rem; font-weight:
 .bottom-nav button.active { color: var(--lime); }
 .nav-icon { font-size: 1.2rem; line-height: 1; }
 .nav-svg { width: 21px; height: 21px; display: block; }
+.nav-image { object-fit: contain; }
 .icon-button { width: 44px; height: 44px; border: 1px solid var(--lime); border-radius: 50%; color: var(--lime); background: transparent; font-size: 1.5rem; line-height: 1; }
 .intro-copy { color: var(--muted); margin-top: 15px; font-size: .84rem; }
 .library-search { margin-top: 25px; }
 .exercise-library { margin-top: 13px; border-top: 1px solid var(--line); }
 .library-row { min-height: 68px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid #29322c; }
 .exercise-icon { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; color: var(--lime); background: #263326; }
-.exercise-icon svg { width: 22px; height: 22px; }
+.exercise-icon img { width: 28px; height: 28px; display: block; object-fit: contain; }
 .library-row > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .library-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
 .library-row small, .built-in-label, .library-row em { color: var(--muted); font-size: .62rem; font-style: normal; }
