@@ -4,12 +4,28 @@ import './styles.css'
 
 const logo = '/assets/logo_sqr.jpg'
 const exerciseIcon = '/assets/exercises/exercise_icon.svg'
+const navIcons = {
+  home: '/assets/icons/home.svg',
+  schedule: '/assets/icons/schedule.svg',
+  history: '/assets/icons/history.svg',
+}
 const muscleGroupIcons = {
   Arms: '/assets/exercises/arms.svg',
+  Biceps: '/assets/exercises/arms.svg',
+  Triceps: '/assets/exercises/arms.svg',
+  Forearms: '/assets/exercises/arms.svg',
   Back: '/assets/exercises/back.svg',
+  Lats: '/assets/exercises/back.svg',
+  'Upper Back': '/assets/exercises/back.svg',
+  'Lower Back': '/assets/exercises/back.svg',
   Chest: '/assets/exercises/chest.svg',
   Core: '/assets/exercises/core.svg',
   Legs: '/assets/exercises/legs.svg',
+  Quadriceps: '/assets/exercises/legs.svg',
+  Hamstrings: '/assets/exercises/legs.svg',
+  Glutes: '/assets/exercises/legs.svg',
+  Calves: '/assets/exercises/legs.svg',
+  Adductors: '/assets/exercises/legs.svg',
   Shoulders: '/assets/exercises/shoulders.svg',
 }
 
@@ -21,7 +37,7 @@ const api = async (url, options = {}) => {
 }
 const post = (url, body) => api(url, { method: 'POST', body: JSON.stringify(body) })
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const muscleGroups = ['Chest', 'Shoulders', 'Back', 'Legs', 'Arms', 'Core', 'Other']
+const muscleGroups = ['Chest', 'Shoulders', 'Lats', 'Upper Back', 'Lower Back', 'Biceps', 'Triceps', 'Forearms', 'Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Adductors', 'Core', 'Full Body', 'Other']
 const formatDate = (date, options = { month: 'short', day: 'numeric' }) => new Intl.DateTimeFormat('en', options).format(new Date(date))
 const formatKg = (value) => `${Number(value || 0).toLocaleString()} kg`
 
@@ -99,16 +115,12 @@ function Auth({ onLogin }) {
 }
 
 function NavIcon({ type }) {
-  if (type === 'exercise') return <img className="nav-svg nav-image" src={exerciseIcon} alt="" aria-hidden="true" />
-
-  const paths = type === 'schedule'
-    ? <><rect x="5" y="3.5" width="14" height="17" rx="1.5" /><path d="M8 8h8M8 12h8M8 16h5" /></>
-    : <><path d="M5 16.5c1.4-2.2 2.4-4.8 2.4-7.4V7.8c0-1.3.9-2.3 2.2-2.3s2.1.9 2.1 2.1v1.2c0 .8.5 1.3 1.3 1.3h1.4c1.7 0 3.1 1.4 3.1 3.1 0 1.6-1.2 3-2.8 3.3l-4.4.8c-1.9.3-3.8-.4-5.3-1.8Z" /><path d="M7.4 9.1 5.5 8M8 6.8 7.5 4.5M10.2 5.5l.8-2" /></>
-  return <svg className="nav-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
+  const src = type === 'exercise' ? exerciseIcon : navIcons[type]
+  return <img className={`nav-svg nav-image${type === 'exercise' ? ' nav-exercise-image' : ''}`} src={src} alt="" aria-hidden="true" />
 }
 
 function Layout({ user, page, setPage, onLogout, children }) {
-  return <div className="app-shell"><header className="topbar"><div className="brand"><img className="brand-image small" src={logo} alt="Gym Track" /><span>GYM TRACK</span></div><div className="user-menu"><span className="avatar">{user.username.slice(0, 1).toUpperCase()}</span><button className="text-button" onClick={onLogout}>Sign out</button></div></header><div className="page-wrap"><Transition transitionKey={page} className="page-transition">{children}</Transition></div><nav className="bottom-nav"><button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span className="nav-icon">⌂</span>Today</button><button className={page === 'templates' ? 'active' : ''} onClick={() => setPage('templates')}><span className="nav-icon"><NavIcon type="schedule" /></span>Schedule</button><button className={page === 'exercises' ? 'active' : ''} onClick={() => setPage('exercises')}><span className="nav-icon"><NavIcon type="exercise" /></span>Exercises</button><button className={page === 'history' ? 'active' : ''} onClick={() => setPage('history')}><span className="nav-icon">◷</span>History</button></nav></div>
+  return <div className="app-shell"><header className="topbar"><div className="brand"><img className="brand-image small" src={logo} alt="Gym Track" /><span>GYM TRACK</span></div><div className="user-menu"><span className="avatar">{user.username.slice(0, 1).toUpperCase()}</span><button className="text-button" onClick={onLogout}>Sign out</button></div></header><div className="page-wrap"><Transition transitionKey={page} className="page-transition">{children}</Transition></div><nav className="bottom-nav"><button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span className="nav-icon"><NavIcon type="home" /></span>Today</button><button className={page === 'templates' ? 'active' : ''} onClick={() => setPage('templates')}><span className="nav-icon"><NavIcon type="schedule" /></span>Schedule</button><button className={page === 'exercises' ? 'active' : ''} onClick={() => setPage('exercises')}><span className="nav-icon"><NavIcon type="exercise" /></span>Exercises</button><button className={page === 'history' ? 'active' : ''} onClick={() => setPage('history')}><span className="nav-icon"><NavIcon type="history" /></span>History</button></nav></div>
 }
 
 function Dashboard({ data, user, onStart, setPage }) {

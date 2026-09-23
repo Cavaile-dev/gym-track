@@ -22,17 +22,84 @@ db.exec(`
 `)
 if (!db.prepare('PRAGMA table_info(templates)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE templates ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
 
-const seed = [
-  ['Bench Press', 'Chest'], ['Overhead Press', 'Shoulders'], ['Incline Dumbbell Press', 'Chest'],
-  ['Cable Fly', 'Chest'], ['Barbell Row', 'Back'], ['Lat Pulldown', 'Back'], ['Deadlift', 'Back'],
-  ['Squat', 'Legs'], ['Leg Press', 'Legs'], ['Romanian Deadlift', 'Legs'], ['Lateral Raise', 'Shoulders'],
-  ['Bicep Curl', 'Arms'], ['Tricep Pushdown', 'Arms'], ['Plank', 'Core']
+const builtInExercises = [
+  // Chest
+  ['Bench Press', 'Chest'], ['Incline Dumbbell Press', 'Chest'], ['Cable Fly', 'Chest'],
+  ['Push-Up', 'Chest'], ['Dumbbell Bench Press', 'Chest'], ['Incline Barbell Bench Press', 'Chest'],
+  ['Decline Bench Press', 'Chest'], ['Machine Chest Press', 'Chest'], ['Pec Deck Fly', 'Chest'],
+  ['Dumbbell Fly', 'Chest'], ['Incline Cable Fly', 'Chest'], ['Chest Dip', 'Chest'],
+  ['Close-Grip Bench Press', 'Triceps'], ['Dumbbell Pullover', 'Chest'], ['Landmine Press', 'Shoulders'],
+  ['Svend Press', 'Chest'],
+
+  // Shoulders
+  ['Overhead Press', 'Shoulders'], ['Lateral Raise', 'Shoulders'], ['Seated Dumbbell Shoulder Press', 'Shoulders'],
+  ['Arnold Press', 'Shoulders'], ['Front Raise', 'Shoulders'], ['Rear Delt Fly', 'Shoulders'],
+  ['Reverse Pec Deck Fly', 'Shoulders'], ['Face Pull', 'Shoulders'], ['Upright Row', 'Shoulders'],
+  ['Cable Lateral Raise', 'Shoulders'], ['Machine Shoulder Press', 'Shoulders'], ['Dumbbell Shrug', 'Upper Back'],
+  ['Barbell Shrug', 'Upper Back'], ['Cable External Rotation', 'Shoulders'], ['Pike Push-Up', 'Shoulders'],
+
+  // Back
+  ['Barbell Row', 'Upper Back'], ['Lat Pulldown', 'Lats'], ['Deadlift', 'Full Body'],
+  ['Pull-Up', 'Lats'], ['Chin-Up', 'Lats'], ['Seated Cable Row', 'Upper Back'],
+  ['One-Arm Dumbbell Row', 'Lats'], ['Chest-Supported Row', 'Upper Back'], ['T-Bar Row', 'Upper Back'],
+  ['Machine Row', 'Upper Back'], ['Straight-Arm Pulldown', 'Lats'], ['Inverted Row', 'Upper Back'],
+  ['Good Morning', 'Hamstrings'], ['Back Extension', 'Lower Back'], ['Rack Pull', 'Lower Back'],
+  ['Meadows Row', 'Lats'], ['Cable Pullover', 'Lats'],
+
+  // Legs and glutes
+  ['Squat', 'Quadriceps'], ['Leg Press', 'Quadriceps'], ['Romanian Deadlift', 'Hamstrings'],
+  ['Front Squat', 'Quadriceps'], ['Goblet Squat', 'Quadriceps'], ['Hack Squat', 'Quadriceps'],
+  ['Bulgarian Split Squat', 'Quadriceps'], ['Forward Lunge', 'Quadriceps'], ['Reverse Lunge', 'Glutes'],
+  ['Walking Lunge', 'Quadriceps'], ['Step-Up', 'Glutes'], ['Leg Extension', 'Quadriceps'],
+  ['Seated Leg Curl', 'Hamstrings'], ['Lying Leg Curl', 'Hamstrings'], ['Hip Thrust', 'Glutes'],
+  ['Glute Bridge', 'Glutes'], ['Sumo Deadlift', 'Glutes'], ['Standing Calf Raise', 'Calves'],
+  ['Seated Calf Raise', 'Calves'], ['Hip Abduction', 'Glutes'], ['Hip Adduction', 'Adductors'],
+  ['Cable Glute Kickback', 'Glutes'],
+
+  // Arms
+  ['Bicep Curl', 'Biceps'], ['Tricep Pushdown', 'Triceps'], ['Hammer Curl', 'Biceps'],
+  ['Preacher Curl', 'Biceps'], ['Incline Dumbbell Curl', 'Biceps'], ['Concentration Curl', 'Biceps'],
+  ['Cable Curl', 'Biceps'], ['EZ-Bar Curl', 'Biceps'], ['Reverse Curl', 'Forearms'],
+  ['Skull Crusher', 'Triceps'], ['Overhead Tricep Extension', 'Triceps'], ['Tricep Dip', 'Triceps'],
+  ['Cable Overhead Tricep Extension', 'Triceps'], ['Tricep Kickback', 'Triceps'], ['Wrist Curl', 'Forearms'],
+  ['Reverse Wrist Curl', 'Forearms'], ['Zottman Curl', 'Biceps'],
+
+  // Core
+  ['Plank', 'Core'], ['Side Plank', 'Core'], ['Crunch', 'Core'],
+  ['Bicycle Crunch', 'Core'], ['Reverse Crunch', 'Core'], ['Hanging Knee Raise', 'Core'],
+  ['Hanging Leg Raise', 'Core'], ['Cable Crunch', 'Core'], ['Ab Wheel Rollout', 'Core'],
+  ['Russian Twist', 'Core'], ['Dead Bug', 'Core'], ['Bird Dog', 'Core'],
+  ['Mountain Climber', 'Core'], ['Pallof Press', 'Core'], ['Cable Wood Chop', 'Core'],
+  ['Hollow Body Hold', 'Core'],
+
+  // Full-body and conditioning
+  ["Farmer's Carry", 'Full Body'], ['Burpee', 'Full Body'], ['Clean and Press', 'Full Body'],
+  ['Kettlebell Swing', 'Full Body'], ['Turkish Get-Up', 'Full Body'], ['Battle Rope Waves', 'Full Body'],
+  ['Sled Push', 'Full Body'], ['Box Jump', 'Full Body'], ['Dumbbell Thruster', 'Full Body'],
 ]
-if (db.prepare('SELECT COUNT(*) AS count FROM exercises').get().count === 0) {
-  const insert = db.prepare('INSERT INTO exercises (name, muscle_group) VALUES (?, ?)')
-  db.exec('BEGIN')
-  seed.forEach((exercise) => insert.run(...exercise))
+
+const findBuiltInExercise = db.prepare('SELECT id, muscle_group FROM exercises WHERE name = ? COLLATE NOCASE AND is_custom = 0 LIMIT 1')
+const findMatchingCustomExercise = db.prepare('SELECT id FROM exercises WHERE name = ? COLLATE NOCASE AND is_custom = 1 LIMIT 1')
+const promoteToBuiltIn = db.prepare('UPDATE exercises SET name = ?, muscle_group = ?, is_custom = 0, created_by = NULL WHERE id = ?')
+const updateBuiltInGroup = db.prepare('UPDATE exercises SET muscle_group = ? WHERE id = ?')
+const insertBuiltIn = db.prepare('INSERT INTO exercises (name, muscle_group, is_custom) VALUES (?, ?, 0)')
+
+db.exec('BEGIN')
+try {
+  builtInExercises.forEach(([name, muscleGroup]) => {
+    const builtIn = findBuiltInExercise.get(name)
+    if (builtIn) {
+      if (builtIn.muscle_group !== muscleGroup) updateBuiltInGroup.run(muscleGroup, builtIn.id)
+      return
+    }
+    const matchingCustom = findMatchingCustomExercise.get(name)
+    if (matchingCustom) promoteToBuiltIn.run(name, muscleGroup, matchingCustom.id)
+    else insertBuiltIn.run(name, muscleGroup)
+  })
   db.exec('COMMIT')
+} catch (error) {
+  db.exec('ROLLBACK')
+  throw error
 }
 
 const app = express()
