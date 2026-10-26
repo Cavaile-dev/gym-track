@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <title>Hamstrings — rear leg anatomy</title>
+  <defs><clipPath id="hamstrings-body"><path d="M27 6h42l6 13c3 11-3 24-6 34 3 13-4 23-4 33l7 4v4H54l-2-11c1-11-4-22-4-32 0 10-5 21-4 32l-2 11H24v-4l7-4c0-10-7-20-4-33-3-10-9-23-6-34Z"/></clipPath><linearGradient id="hamstrings-highlight" x1="24" y1="16" x2="68" y2="80" gradientUnits="userSpaceOnUse"><stop stop-color="#ddff94"/><stop offset="1" stop-color="#a6d44d"/></linearGradient></defs>
+  <path d="M27 6h42l6 13c3 11-3 24-6 34 3 13-4 23-4 33l7 4v4H54l-2-11c1-11-4-22-4-32 0 10-5 21-4 32l-2 11H24v-4l7-4c0-10-7-20-4-33-3-10-9-23-6-34Z" fill="#27352b" stroke="#94a58c" stroke-width="2" stroke-linejoin="round"/>
+  <g clip-path="url(#hamstrings-body)">
+    <g fill="#667f5a" fill-opacity=".35" stroke="#9aaa8d" stroke-opacity=".4" stroke-width=".9" stroke-linejoin="round"><path d="M26 14c-5 5-4 11-1 15 7 6 17 2 21-3l-1-13c-6-3-13-3-19 1Z"/><path d="M26 14c-5 5-4 11-1 15 7 6 17 2 21-3l-1-13c-6-3-13-3-19 1Z" transform="translate(96 0) scale(-1 1)"/><path d="M29 59c-5 8-1 15 4 23l3-2c0-8 2-14 1-20Zm10 0-1 17 3 1c2-7 1-12 1-16Z"/><path d="M29 59c-5 8-1 15 4 23l3-2c0-8 2-14 1-20Zm10 0-1 17 3 1c2-7 1-12 1-16Z" transform="translate(96 0) scale(-1 1)"/></g>
+    <g fill="url(#hamstrings-highlight)" stroke="#d4f78c" stroke-width=".8" stroke-linejoin="round"><path d="M26 34c-2 5 3 15 4 19l6-1 4-16Zm15-2-3 17 3 3c2-7 4-12 4-17Z"/><path d="M26 34c-2 5 3 15 4 19l6-1 4-16Zm15-2-3 17 3 3c2-7 4-12 4-17Z" transform="translate(96 0) scale(-1 1)"/></g>
+    <g stroke="#a4b798" stroke-opacity=".6" stroke-width="1.1" stroke-linecap="round" fill="none"><path d="M27 10q21 4 42 0M30 55q4 2 8 0m20 0q4 2 8 0M35 83l-1 6m27-6 1 6"/></g>
+  </g>
+</svg>

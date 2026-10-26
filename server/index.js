@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { dateContext, monthBounds, timeZone, weekKey } from './time.js'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const databasePath = process.env.DATABASE_PATH || path.join(root, 'gym-track.sqlite')
@@ -21,6 +22,15 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS set_logs (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, exercise_id INTEGER NOT NULL, set_number INTEGER NOT NULL, weight REAL NOT NULL, reps INTEGER NOT NULL, logged_at TEXT NOT NULL, FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE);
 `)
 if (!db.prepare('PRAGMA table_info(templates)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE templates ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS set_requests (session_id INTEGER NOT NULL, request_id TEXT NOT NULL, payload_hash TEXT NOT NULL, log_id INTEGER NOT NULL, PRIMARY KEY(session_id, request_id), FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_exercises_owner ON exercises(created_by, is_custom);
+  CREATE INDEX IF NOT EXISTS idx_templates_owner ON templates(user_id, archived);
+  CREATE INDEX IF NOT EXISTS idx_workouts_user_finished ON workout_sessions(user_id, status, finished_at);
+  CREATE INDEX IF NOT EXISTS idx_set_logs_exercise ON set_logs(exercise_id, session_id);
+`)
 
 const builtInExercises = [
   // Chest
@@ -103,113 +113,331 @@ try {
 }
 
 const app = express()
-app.use(express.json())
-app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() })
+app.disable('x-powered-by')
+app.use(express.json({ limit: '32kb' }))
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  next()
+})
 
+class HttpError extends Error { constructor(status, message) { super(message); this.status = status } }
+const fail = (status, message) => { throw new HttpError(status, message) }
+const get = (sql, ...params) => db.prepare(sql).get(...params) ?? null
+const all = (sql, ...params) => db.prepare(sql).all(...params)
+const run = (sql, ...params) => db.prepare(sql).run(...params)
 const now = () => new Date().toISOString()
 const transaction = (callback) => { db.exec('BEGIN'); try { const result = callback(); db.exec('COMMIT'); return result } catch (error) { db.exec('ROLLBACK'); throw error } }
-const publicUser = (user) => user && ({ id: user.id, username: user.username, email: user.email })
+const publicUser = (user) => user ? { id: user.id, username: user.username, email: user.email } : null
+const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
+const defaultZone = timeZone(process.env.APP_TIME_ZONE, Intl.DateTimeFormat().resolvedOptions().timeZone)
+const zoneFor = (req) => timeZone(req.get('X-Time-Zone'), defaultZone)
+
+const muscleGroups = new Set(['Chest', 'Shoulders', 'Lats', 'Upper Back', 'Lower Back', 'Biceps', 'Triceps', 'Forearms', 'Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Adductors', 'Core', 'Full Body', 'Other'])
+function text(value, label, max, min = 1) {
+  if (typeof value !== 'string' || value.trim().length < min || value.trim().length > max || /[\u0000-\u001f]/.test(value)) fail(400, `${label} must contain ${min}â€“${max} characters.`)
+  return value.trim()
+}
+function number(value, label, min, max, integer = true) {
+  if (!['string', 'number'].includes(typeof value) || String(value).trim() === '') fail(400, `${label} is required.`)
+  const result = Number(value)
+  if (!Number.isFinite(result) || result < min || result > max || (integer && !Number.isSafeInteger(result))) fail(400, `${label} must be between ${min} and ${max}.`)
+  return result
+}
+const id = (value) => number(value, 'ID', 1, Number.MAX_SAFE_INTEGER)
+
 const cookie = (value, maxAge = 60 * 60 * 24 * 365) => `gym_session=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax`
 function readCookie(req, name) {
   const raw = req.headers.cookie || ''
   return raw.split(';').map((part) => part.trim().split('=')).find(([key]) => key === name)?.[1]
 }
+function sessionUser(req) {
+  const token = readCookie(req, 'gym_session')
+  if (!token) return null
+  return get('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?', hash(token), now())
+}
 function auth(req, res, next) {
   const token = readCookie(req, 'gym_session')
-  if (!token) return res.status(401).json({ error: 'Please sign in to continue.' })
-  const row = db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), now())
-  if (!row) return res.status(401).json({ error: 'Your session has expired. Please sign in again.' })
-  req.user = row
+  if (!token) fail(401, 'Please sign in to continue.')
+  const user = sessionUser(req)
+  if (!user) fail(401, 'Your session has expired. Please sign in again.')
+  req.user = user
   next()
 }
-function hash(value) { return crypto.createHash('sha256').update(value).digest('hex') }
 function startSession(userId, res) {
   const token = crypto.randomBytes(32).toString('hex')
-  db.prepare('INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)').run(hash(token), userId, new Date(Date.now() + 365 * 86400000).toISOString())
+  transaction(() => {
+    run('DELETE FROM sessions WHERE expires_at<?', now())
+    run('DELETE FROM sessions WHERE user_id=? AND token_hash NOT IN (SELECT token_hash FROM sessions WHERE user_id=? ORDER BY expires_at DESC LIMIT 9)', userId, userId)
+    run('INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)', hash(token), userId, new Date(Date.now() + 365 * 86400000).toISOString())
+  })
   res.setHeader('Set-Cookie', cookie(token))
 }
+
 function parseDays(value) { try { return JSON.parse(value || '[]') } catch { return [] } }
 function templateShape(template) {
-  const exercises = db.prepare(`SELECT te.exercise_id AS id, e.name, e.muscle_group AS muscleGroup, te.target_sets AS targetSets, te.position
-    FROM template_exercises te JOIN exercises e ON e.id=te.exercise_id WHERE te.template_id=? ORDER BY te.position`).all(template.id)
-  const lastPerformed = db.prepare("SELECT finished_at AS finishedAt FROM workout_sessions WHERE template_id=? AND status='finished' ORDER BY finished_at DESC LIMIT 1").get(template.id)
-  return { id: template.id, name: template.name, scheduledDays: parseDays(template.scheduled_days), exercises, lastPerformed: lastPerformed?.finishedAt || null }
+  if (!template) return null
+  const exercises = all(`SELECT e.id, e.name, e.muscle_group AS muscleGroup, te.target_sets AS targetSets, te.position
+    FROM template_exercises te JOIN exercises e ON e.id=te.exercise_id WHERE te.template_id=? ORDER BY te.position`, template.id)
+  const last = get("SELECT MAX(finished_at) AS date FROM workout_sessions WHERE template_id=? AND user_id=? AND status='finished'", template.id, template.user_id)
+  return { id: template.id, name: template.name, scheduledDays: parseDays(template.scheduled_days), exercises, lastPerformed: last?.date || null }
 }
 function activeShape(session) {
   if (!session) return null
-  const template = templateShape(db.prepare('SELECT * FROM templates WHERE id=?').get(session.template_id))
-  const logs = db.prepare(`SELECT sl.id, sl.exercise_id AS exerciseId, sl.set_number AS setNumber, sl.weight, sl.reps, sl.logged_at AS loggedAt
-    FROM set_logs sl WHERE sl.session_id=? ORDER BY sl.exercise_id, sl.set_number`).all(session.id)
-  const previous = Object.fromEntries(template.exercises.map((exercise) => [exercise.id, previousFor(session.user_id, exercise.id, session.started_at)]).filter(([, value]) => value))
-  return { id: session.id, template, startedAt: session.started_at, logs, previous }
+  const template = templateShape(get('SELECT * FROM templates WHERE id=? AND user_id=?', session.template_id, session.user_id))
+  const logs = all('SELECT id, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, logged_at AS loggedAt FROM set_logs WHERE session_id=? ORDER BY logged_at, id', session.id)
+  const previous = all(`SELECT exerciseId, weight, reps, finishedAt FROM (
+    SELECT sl.exercise_id AS exerciseId, sl.weight, sl.reps, ws.finished_at AS finishedAt,
+      ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY ws.finished_at DESC, sl.set_number ASC) AS rank
+    FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id
+    WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at<?
+      AND sl.exercise_id IN (SELECT exercise_id FROM template_exercises WHERE template_id=?)
+  ) WHERE rank=1`, session.user_id, session.started_at, session.template_id)
+  return { id: session.id, template, startedAt: session.started_at, logs, previous: Object.fromEntries(previous.map((entry) => [entry.exerciseId, entry])) }
 }
-function previousFor(userId, exerciseId, before = now()) {
-  return db.prepare(`SELECT sl.weight, sl.reps, ws.finished_at AS finishedAt FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id
-    WHERE ws.user_id=? AND sl.exercise_id=? AND ws.status='finished' AND ws.finished_at<? ORDER BY ws.finished_at DESC, sl.set_number LIMIT 1`).get(userId, exerciseId, before) || null
+function stats(userId, zone) {
+  const context = dateContext(zone)
+  const earliest = context.monthStart < context.previousWeekStart ? context.monthStart : context.previousWeekStart
+  const totals = get(`SELECT
+    COUNT(DISTINCT CASE WHEN ws.finished_at>=? THEN ws.id END) AS workoutsWeek,
+    COUNT(DISTINCT CASE WHEN ws.finished_at>=? THEN ws.id END) AS workoutsMonth,
+    COALESCE(SUM(CASE WHEN ws.finished_at>=? THEN sl.weight*sl.reps ELSE 0 END),0) AS volume,
+    COALESCE(SUM(CASE WHEN ws.finished_at>=? AND ws.finished_at<? THEN sl.weight*sl.reps ELSE 0 END),0) AS previousVolume
+    FROM workout_sessions ws LEFT JOIN set_logs sl ON sl.session_id=ws.id
+    WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=?`, context.weekStart, context.monthStart, context.weekStart, context.previousWeekStart, context.weekStart, userId, earliest)
+  const records = all(`SELECT name, weight, reps, date FROM (
+    SELECT e.name, sl.weight, sl.reps, ws.finished_at AS date,
+    ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY sl.weight DESC, sl.reps DESC, ws.finished_at DESC) AS rank
+    FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id JOIN workout_sessions ws ON ws.id=sl.session_id
+    WHERE ws.user_id=? AND ws.status='finished') WHERE rank=1 ORDER BY weight DESC, reps DESC LIMIT 3`, userId)
+  const dates = all("SELECT finished_at AS date FROM workout_sessions WHERE user_id=? AND status='finished' ORDER BY finished_at DESC LIMIT 2000", userId)
+  const weeks = new Set(dates.map((entry) => weekKey(entry.date, zone)))
+  let streak = 0
+  const cursor = new Date(`${context.weekKey}T00:00:00Z`)
+  while (weeks.has(cursor.toISOString().slice(0, 10))) { streak++; cursor.setUTCDate(cursor.getUTCDate() - 7) }
+  return {
+    workoutsWeek: totals.workoutsWeek, workoutsMonth: totals.workoutsMonth, volume: Math.round(totals.volume),
+    volumeDelta: totals.previousVolume ? Math.round((totals.volume - totals.previousVolume) / totals.previousVolume * 100) : null,
+    records: records.map((record) => ({ ...record })), streak,
+  }
 }
-function stats(userId) {
-  const monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
-  const weekStart = monday.toISOString()
-  const monthStart = new Date(Date.now() - 30 * 86400000).toISOString()
-  const workoutsWeek = db.prepare("SELECT COUNT(*) count FROM workout_sessions WHERE user_id=? AND status='finished' AND finished_at>=?").get(userId, weekStart).count
-  const workoutsMonth = db.prepare("SELECT COUNT(*) count FROM workout_sessions WHERE user_id=? AND status='finished' AND finished_at>=?").get(userId, monthStart).count
-  const volume = db.prepare(`SELECT COALESCE(SUM(sl.weight*sl.reps),0) volume FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=?`).get(userId, weekStart).volume
-  const previousWeekStart = new Date(monday); previousWeekStart.setDate(previousWeekStart.getDate() - 7)
-  const previousVolume = db.prepare(`SELECT COALESCE(SUM(sl.weight*sl.reps),0) volume FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<?`).get(userId, previousWeekStart.toISOString(), weekStart).volume
-  const recordSets = db.prepare(`SELECT e.id AS exerciseId, e.name, sl.weight, sl.reps, ws.finished_at AS date FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id JOIN workout_sessions ws ON ws.id=sl.session_id
-    WHERE ws.user_id=? AND ws.status='finished' ORDER BY sl.weight DESC, sl.reps DESC, ws.finished_at DESC`).all(userId)
-  const seenExercises = new Set()
-  const records = recordSets.filter((record) => { if (seenExercises.has(record.exerciseId)) return false; seenExercises.add(record.exerciseId); return true }).slice(0, 3)
-  const completedWeeks = db.prepare("SELECT finished_at AS finishedAt FROM workout_sessions WHERE user_id=? AND status='finished'").all(userId)
-  const weekKeys = new Set(completedWeeks.map(({ finishedAt }) => weekKey(finishedAt)))
-  let streak = 0; const cursor = new Date(monday)
-  while (weekKeys.has(weekKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 7) }
-  return { workoutsWeek, workoutsMonth, volume: Math.round(volume), volumeDelta: previousVolume ? Math.round(((volume - previousVolume) / previousVolume) * 100) : null, streak, records }
+function bootstrap(userId, zone) {
+  const templates = all('SELECT * FROM templates WHERE user_id=? AND archived=0 ORDER BY name', userId).map(templateShape)
+  const exercises = all('SELECT id, name, muscle_group AS muscleGroup, is_custom AS isCustom FROM exercises WHERE is_custom=0 OR created_by=? ORDER BY name', userId)
+  const active = get("SELECT * FROM workout_sessions WHERE user_id=? AND status='active' ORDER BY started_at DESC LIMIT 1", userId)
+  return { templates, exercises, today: templates.find((template) => template.scheduledDays.includes(dateContext(zone).dayIndex)) || null, active: activeShape(active), stats: stats(userId, zone) }
 }
-function weekKey(value) { const date = new Date(value); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - ((date.getDay() + 6) % 7)); return date.toISOString().slice(0, 10) }
 
-app.get('/api/session', (req, res) => {
-  const token = readCookie(req, 'gym_session')
-  const user = token && db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hash(token), now())
-  res.json({ user: publicUser(user) })
-})
+function validateTemplate(userId, body) {
+  const name = text(body.name, 'Schedule name', 80)
+  if (!Array.isArray(body.scheduledDays) || body.scheduledDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) fail(400, 'Choose valid scheduled days.')
+  const days = [...new Set(body.scheduledDays)].sort()
+  if (!Array.isArray(body.exercises) || body.exercises.length < 1 || body.exercises.length > 30) fail(400, 'Choose 1â€“30 exercises.')
+  const exercises = body.exercises.map((exercise) => ({ id: id(exercise?.id), targetSets: number(exercise?.targetSets, 'Target sets', 1, 30) }))
+  if (new Set(exercises.map((exercise) => exercise.id)).size !== exercises.length) fail(400, 'An exercise can only appear once in a schedule.')
+  const available = all(`SELECT id FROM exercises WHERE id IN (${exercises.map(() => '?').join(',')}) AND (is_custom=0 OR created_by=?)`, ...exercises.map((exercise) => exercise.id), userId)
+  if (available.length !== exercises.length) fail(400, 'One or more exercises are unavailable.')
+  return { name, days, exercises }
+}
+function editableTemplate(templateId, userId) {
+  const template = get('SELECT * FROM templates WHERE id=? AND user_id=? AND archived=0', templateId, userId)
+  if (!template) fail(404, 'Schedule not found.')
+  if (get("SELECT id FROM workout_sessions WHERE template_id=? AND user_id=? AND status='active'", templateId, userId)) fail(409, 'Finish or leave the active workout before changing this schedule.')
+  return template
+}
+function ownWorkout(req) {
+  const session = get('SELECT * FROM workout_sessions WHERE id=? AND user_id=?', id(req.params.id), req.user.id)
+  if (!session) fail(404, 'Workout not found.')
+  return session
+}
+const requireActive = (session) => { if (session.status !== 'active') fail(409, 'This workout is no longer active.') }
+const uuidV4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
+
+// Authentication
+app.get('/api/health', (req, res) => { get('SELECT 1 AS ok'); res.json({ ok: true }) })
+app.get('/api/session', (req, res) => res.json({ user: publicUser(sessionUser(req)) }))
 app.post('/api/auth/register', (req, res) => {
-  const { username, email, password, confirmPassword } = req.body
-  if (!username?.trim() || !password || password.length < 8 || password !== confirmPassword) return res.status(400).json({ error: password?.length < 8 ? 'Password must be at least 8 characters.' : password !== confirmPassword ? 'Passwords do not match.' : 'Username is required.' })
-  try { const result = db.prepare('INSERT INTO users (username,email,password_hash,created_at) VALUES (?,?,?,?)').run(username.trim(), email?.trim() || null, bcrypt.hashSync(password, 10), now()); startSession(result.lastInsertRowid, res); res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid)) }) }
-  catch { res.status(409).json({ error: 'That username is already in use.' }) }
+  const body = req.body ?? {}
+  const username = text(body.username, 'Username', 32, 3)
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) fail(400, 'Use letters, numbers, dots, underscores, or hyphens in your username.')
+  if (typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 128) fail(400, 'Password must contain 8â€“128 characters.')
+  if (body.password !== body.confirmPassword) fail(400, 'Passwords do not match.')
+  const email = body.email ? text(body.email, 'Email', 254) : null
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'Enter a valid email address.')
+  if (get('SELECT id FROM users WHERE lower(username)=lower(?)', username)) fail(409, 'That username is already in use.')
+  let result
+  try { result = run('INSERT INTO users (username,email,password_hash,created_at) VALUES (?,?,?,?)', username, email, bcrypt.hashSync(body.password, 10), now()) }
+  catch (error) { if (/UNIQUE constraint failed: users.username/i.test(error.message)) fail(409, 'That username is already in use.'); throw error }
+  startSession(result.lastInsertRowid, res)
+  res.json({ user: publicUser(get('SELECT * FROM users WHERE id=?', result.lastInsertRowid)) })
 })
 app.post('/api/auth/login', (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE lower(username)=lower(?)').get(req.body.username?.trim())
-  if (!user || !bcrypt.compareSync(req.body.password || '', user.password_hash)) return res.status(401).json({ error: 'Username or password is incorrect.' })
-  startSession(user.id, res); res.json({ user: publicUser(user) })
+  const body = req.body ?? {}
+  if (typeof body.username !== 'string' || !body.username.trim() || body.username.length > 128 || typeof body.password !== 'string' || body.password.length > 128) fail(401, 'Username or password is incorrect.')
+  const user = get('SELECT * FROM users WHERE lower(username)=lower(?)', body.username.trim())
+  const valid = bcrypt.compareSync(body.password, user?.password_hash || dummyHash)
+  if (!user || !valid) fail(401, 'Username or password is incorrect.')
+  startSession(user.id, res)
+  res.json({ user: publicUser(user) })
 })
-app.post('/api/auth/logout', (req, res) => { const token = readCookie(req, 'gym_session'); if (token) db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(token)); res.setHeader('Set-Cookie', cookie('', 0)); res.json({ ok: true }) })
-
-app.get('/api/bootstrap', auth, (req, res) => {
-  const templates = db.prepare('SELECT * FROM templates WHERE user_id=? AND archived=0 ORDER BY name').all(req.user.id).map(templateShape)
-  const exercises = db.prepare('SELECT id,name,muscle_group AS muscleGroup,is_custom AS isCustom FROM exercises WHERE is_custom=0 OR created_by=? ORDER BY name').all(req.user.id)
-  const day = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
-  const today = templates.find((template) => template.scheduledDays.includes(day)) || null
-  const active = db.prepare("SELECT * FROM workout_sessions WHERE user_id=? AND status='active' ORDER BY started_at DESC LIMIT 1").get(req.user.id)
-  res.json({ templates, exercises, today, active: activeShape(active), stats: stats(req.user.id) })
+const dummyHash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10)
+app.post('/api/auth/logout', (req, res) => {
+  const token = readCookie(req, 'gym_session')
+  if (token) run('DELETE FROM sessions WHERE token_hash=?', hash(token))
+  res.setHeader('Set-Cookie', cookie('', 0))
+  res.json({ ok: true })
 })
-app.post('/api/exercises', auth, (req, res) => { if (!req.body.name?.trim()) return res.status(400).json({ error: 'Exercise name is required.' }); const result = db.prepare('INSERT INTO exercises (name,muscle_group,is_custom,created_by) VALUES (?,?,1,?)').run(req.body.name.trim(), req.body.muscleGroup?.trim() || 'Other', req.user.id); res.json({ id: result.lastInsertRowid, name: req.body.name.trim(), muscleGroup: req.body.muscleGroup?.trim() || 'Other', isCustom: 1 }) })
-app.delete('/api/exercises/:id', auth, (req, res) => { const exercise = db.prepare('SELECT * FROM exercises WHERE id=? AND is_custom=1 AND created_by=?').get(req.params.id, req.user.id); if (!exercise) return res.status(404).json({ error: 'Custom exercise not found.' }); const inUse = db.prepare('SELECT (SELECT COUNT(*) FROM template_exercises WHERE exercise_id=?) + (SELECT COUNT(*) FROM set_logs WHERE exercise_id=?) AS count').get(exercise.id, exercise.id).count; if (inUse) return res.status(409).json({ error: 'This exercise is already used in a schedule or workout history.' }); db.prepare('DELETE FROM exercises WHERE id=?').run(exercise.id); res.json({ ok: true }) })
-app.post('/api/templates', auth, (req, res) => { const tx = transaction(() => { const result = db.prepare('INSERT INTO templates (user_id,name,scheduled_days,created_at) VALUES (?,?,?,?)').run(req.user.id, req.body.name.trim(), JSON.stringify(req.body.scheduledDays || []), now()); const insert = db.prepare('INSERT INTO template_exercises (template_id,exercise_id,position,target_sets) VALUES (?,?,?,?)'); (req.body.exercises || []).forEach((e, i) => insert.run(result.lastInsertRowid, e.id, i, Number(e.targetSets) || 3)); return templateShape(db.prepare('SELECT * FROM templates WHERE id=?').get(result.lastInsertRowid)) }); res.json(tx) })
-app.put('/api/templates/:id', auth, (req, res) => { const existing = db.prepare('SELECT * FROM templates WHERE id=? AND user_id=?').get(req.params.id, req.user.id); if (!existing) return res.status(404).json({ error: 'Template not found.' }); const tx = transaction(() => { db.prepare('UPDATE templates SET name=?,scheduled_days=? WHERE id=?').run(req.body.name.trim(), JSON.stringify(req.body.scheduledDays || []), existing.id); db.prepare('DELETE FROM template_exercises WHERE template_id=?').run(existing.id); const insert = db.prepare('INSERT INTO template_exercises (template_id,exercise_id,position,target_sets) VALUES (?,?,?,?)'); (req.body.exercises || []).forEach((e, i) => insert.run(existing.id, e.id, i, Number(e.targetSets) || 3)); return templateShape(db.prepare('SELECT * FROM templates WHERE id=?').get(existing.id)) }); res.json(tx) })
-app.delete('/api/templates/:id', auth, (req, res) => { db.prepare('UPDATE templates SET archived=1,scheduled_days=? WHERE id=? AND user_id=?').run('[]', req.params.id, req.user.id); res.json({ ok: true }) })
 
-app.post('/api/workouts', auth, (req, res) => { const template = db.prepare('SELECT * FROM templates WHERE id=? AND user_id=?').get(req.body.templateId, req.user.id); if (!template) return res.status(404).json({ error: 'Template not found.' }); const active = db.prepare("SELECT * FROM workout_sessions WHERE user_id=? AND status='active'").get(req.user.id); if (active) return res.json(activeShape(active)); const result = db.prepare('INSERT INTO workout_sessions (user_id,template_id,started_at,status) VALUES (?,?,?,?)').run(req.user.id, template.id, now(), 'active'); res.json(activeShape(db.prepare('SELECT * FROM workout_sessions WHERE id=?').get(result.lastInsertRowid))) })
-app.get('/api/workouts/:id', auth, (req, res) => { const session = db.prepare('SELECT * FROM workout_sessions WHERE id=? AND user_id=?').get(req.params.id, req.user.id); res.json(activeShape(session)) })
-app.post('/api/workouts/:id/sets', auth, (req, res) => { const session = db.prepare("SELECT * FROM workout_sessions WHERE id=? AND user_id=? AND status='active'").get(req.params.id, req.user.id); if (!session || !req.body.exerciseId || req.body.weight === '' || !req.body.reps) return res.status(400).json({ error: 'Enter weight and reps to log this set.' }); const result = db.prepare('SELECT COALESCE(MAX(set_number),0)+1 number FROM set_logs WHERE session_id=? AND exercise_id=?').get(session.id, req.body.exerciseId); db.prepare('INSERT INTO set_logs (session_id,exercise_id,set_number,weight,reps,logged_at) VALUES (?,?,?,?,?,?)').run(session.id, req.body.exerciseId, result.number, Number(req.body.weight), Number(req.body.reps), now()); res.json(activeShape(session)) })
-app.delete('/api/workouts/:id/sets/:setId', auth, (req, res) => { const session = db.prepare("SELECT * FROM workout_sessions WHERE id=? AND user_id=? AND status='active'").get(req.params.id, req.user.id); const set = session && db.prepare('SELECT id FROM set_logs WHERE id=? AND session_id=?').get(req.params.setId, session.id); if (!set) return res.status(404).json({ error: 'Set not found.' }); db.prepare('DELETE FROM set_logs WHERE id=?').run(set.id); res.json(activeShape(session)) })
-app.post('/api/workouts/:id/finish', auth, (req, res) => { const session = db.prepare("SELECT * FROM workout_sessions WHERE id=? AND user_id=? AND status='active'").get(req.params.id, req.user.id); if (!session) return res.status(404).json({ error: 'Workout not found.' }); db.prepare("UPDATE workout_sessions SET status='finished',finished_at=? WHERE id=?").run(now(), session.id); res.json({ ok: true }) })
-app.post('/api/workouts/:id/abandon', auth, (req, res) => { db.prepare("UPDATE workout_sessions SET status='abandoned',finished_at=? WHERE id=? AND user_id=? AND status='active'").run(now(), req.params.id, req.user.id); res.json({ ok: true }) })
+// Everything below requires a signed-in user.
+app.use('/api', auth)
+app.get('/api/bootstrap', (req, res) => res.json(bootstrap(req.user.id, zoneFor(req))))
 
-app.get('/api/history', auth, (req, res) => { const month = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : now().slice(0, 7); const sessions = db.prepare("SELECT ws.id,ws.started_at AS startedAt,ws.finished_at AS finishedAt,t.name FROM workout_sessions ws JOIN templates t ON t.id=ws.template_id WHERE ws.user_id=? AND ws.status='finished' AND strftime('%Y-%m',ws.finished_at)=? ORDER BY ws.finished_at DESC").all(req.user.id, month).map((session) => ({ ...session, sets: db.prepare('SELECT sl.exercise_id AS exerciseId,e.name,sl.set_number AS setNumber,sl.weight,sl.reps FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id WHERE sl.session_id=? ORDER BY sl.exercise_id,sl.set_number').all(session.id) })); res.json({ sessions }) })
-app.delete('/api/history/:id', auth, (req, res) => { const session = db.prepare("SELECT id FROM workout_sessions WHERE id=? AND user_id=? AND status='finished'").get(req.params.id, req.user.id); if (!session) return res.status(404).json({ error: 'Session not found.' }); transaction(() => { db.prepare('DELETE FROM set_logs WHERE session_id=?').run(session.id); db.prepare('DELETE FROM workout_sessions WHERE id=?').run(session.id) }); res.json({ ok: true }) })
-app.get('/api/exercises/:id/history', auth, (req, res) => { const rows = db.prepare("SELECT ws.finished_at AS date,sl.weight,sl.reps,e.name FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id JOIN exercises e ON e.id=sl.exercise_id WHERE ws.user_id=? AND sl.exercise_id=? AND ws.status='finished' ORDER BY ws.finished_at").all(req.user.id, req.params.id); res.json({ exercise: rows[0]?.name || 'Exercise', sessions: rows }) })
+// Exercises
+app.post('/api/exercises', (req, res) => {
+  const body = req.body ?? {}
+  const name = text(body.name, 'Exercise name', 100)
+  const group = body.muscleGroup || 'Other'
+  if (!muscleGroups.has(group)) fail(400, 'Choose a valid muscle group.')
+  if (get('SELECT COUNT(*) AS count FROM exercises WHERE created_by=?', req.user.id).count >= 200) fail(409, 'You can save up to 200 custom exercises.')
+  const result = run('INSERT INTO exercises (name,muscle_group,is_custom,created_by) VALUES (?,?,1,?)', name, group, req.user.id)
+  res.json({ id: result.lastInsertRowid, name, muscleGroup: group, isCustom: 1 })
+})
+app.delete('/api/exercises/:id', (req, res) => {
+  const exerciseId = id(req.params.id)
+  const exercise = get('SELECT id FROM exercises WHERE id=? AND created_by=? AND is_custom=1', exerciseId, req.user.id)
+  if (!exercise) fail(404, 'Custom exercise not found.')
+  const used = get('SELECT (SELECT COUNT(*) FROM template_exercises WHERE exercise_id=?) + (SELECT COUNT(*) FROM set_logs WHERE exercise_id=?) AS count', exerciseId, exerciseId)
+  if (used.count) fail(409, 'This exercise is already used in a schedule or workout history.')
+  run('DELETE FROM exercises WHERE id=? AND created_by=?', exerciseId, req.user.id)
+  res.json({ ok: true })
+})
+app.get('/api/exercises/:id/history', (req, res) => {
+  const exerciseId = id(req.params.id)
+  const exercise = get('SELECT name FROM exercises WHERE id=? AND (is_custom=0 OR created_by=?)', exerciseId, req.user.id)
+  if (!exercise) fail(404, 'Exercise not found.')
+  const sessions = all("SELECT ws.finished_at AS date, sl.weight, sl.reps FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND sl.exercise_id=? AND ws.status='finished' ORDER BY ws.finished_at, sl.set_number", req.user.id, exerciseId)
+  res.json({ exercise: exercise.name, sessions })
+})
+
+// Schedules (templates)
+function saveTemplate(req, res, existing) {
+  if (!existing && get('SELECT COUNT(*) AS count FROM templates WHERE user_id=? AND archived=0', req.user.id).count >= 100) fail(409, 'You can save up to 100 schedules.')
+  const payload = validateTemplate(req.user.id, req.body ?? {})
+  const templateId = transaction(() => {
+    let target = existing?.id
+    if (target) {
+      run('UPDATE templates SET name=?, scheduled_days=? WHERE id=? AND user_id=?', payload.name, JSON.stringify(payload.days), target, req.user.id)
+      run('DELETE FROM template_exercises WHERE template_id=?', target)
+    } else {
+      target = run('INSERT INTO templates (user_id,name,scheduled_days,created_at) VALUES (?,?,?,?)', req.user.id, payload.name, JSON.stringify(payload.days), now()).lastInsertRowid
+    }
+    payload.exercises.forEach((exercise, position) => run('INSERT INTO template_exercises (template_id,exercise_id,position,target_sets) VALUES (?,?,?,?)', target, exercise.id, position, exercise.targetSets))
+    return target
+  })
+  res.json(templateShape(get('SELECT * FROM templates WHERE id=? AND user_id=?', templateId, req.user.id)))
+}
+app.post('/api/templates', (req, res) => saveTemplate(req, res, null))
+app.put('/api/templates/:id', (req, res) => saveTemplate(req, res, editableTemplate(id(req.params.id), req.user.id)))
+app.delete('/api/templates/:id', (req, res) => {
+  const template = editableTemplate(id(req.params.id), req.user.id)
+  run("UPDATE templates SET archived=1, scheduled_days='[]' WHERE id=? AND user_id=?", template.id, req.user.id)
+  res.json({ ok: true })
+})
+
+// Workouts
+app.post('/api/workouts', (req, res) => {
+  const templateId = id(req.body?.templateId)
+  if (!get('SELECT id FROM templates WHERE id=? AND user_id=? AND archived=0', templateId, req.user.id)) fail(404, 'Schedule not found.')
+  let active = get("SELECT * FROM workout_sessions WHERE user_id=? AND status='active'", req.user.id)
+  if (!active) {
+    const result = run("INSERT INTO workout_sessions (user_id,template_id,started_at,status) VALUES (?,?,?,'active')", req.user.id, templateId, now())
+    active = get('SELECT * FROM workout_sessions WHERE id=?', result.lastInsertRowid)
+  }
+  res.json(activeShape(active))
+})
+app.get('/api/workouts/:id', (req, res) => {
+  const session = ownWorkout(req)
+  requireActive(session)
+  res.json(activeShape(session))
+})
+app.post('/api/workouts/:id/sets', (req, res) => {
+  const session = ownWorkout(req)
+  requireActive(session)
+  const body = req.body ?? {}
+  const exerciseId = id(body.exerciseId)
+  const weight = number(body.weight, 'Weight', 0, 2000, false)
+  const reps = number(body.reps, 'Reps', 1, 1000)
+  if (typeof body.requestId !== 'string' || !uuidV4.test(body.requestId)) fail(400, 'A valid request ID is required to save a set safely.')
+  const requestId = body.requestId.toLowerCase()
+  const payloadHash = hash(JSON.stringify([exerciseId, weight, reps]))
+  if (!get('SELECT 1 AS ok FROM template_exercises WHERE template_id=? AND exercise_id=?', session.template_id, exerciseId)) fail(400, 'This exercise is not part of this workout.')
+  transaction(() => {
+    const previous = get('SELECT payload_hash FROM set_requests WHERE session_id=? AND request_id=?', session.id, requestId)
+    if (previous) {
+      if (previous.payload_hash !== payloadHash) fail(409, 'This request ID was already used for a different set.')
+      return
+    }
+    if (get('SELECT COUNT(*) AS count FROM set_requests WHERE session_id=?', session.id).count >= 1200) fail(409, 'This workout is no longer active or has reached its set request limit.')
+    const setNumber = get('SELECT COALESCE(MAX(set_number),0)+1 AS number FROM set_logs WHERE session_id=? AND exercise_id=?', session.id, exerciseId).number
+    const log = run('INSERT INTO set_logs (session_id,exercise_id,set_number,weight,reps,logged_at) VALUES (?,?,?,?,?,?)', session.id, exerciseId, setNumber, weight, reps, now())
+    run('INSERT INTO set_requests (session_id,request_id,payload_hash,log_id) VALUES (?,?,?,?)', session.id, requestId, payloadHash, log.lastInsertRowid)
+  })
+  res.json(activeShape(session))
+})
+app.delete('/api/workouts/:id/sets/:setId', (req, res) => {
+  const session = ownWorkout(req)
+  requireActive(session)
+  run('DELETE FROM set_logs WHERE id=? AND session_id=?', id(req.params.setId), session.id)
+  res.json(activeShape(session))
+})
+app.post('/api/workouts/:id/finish', (req, res) => {
+  const session = ownWorkout(req)
+  if (session.status === 'finished') return res.json({ ok: true })
+  requireActive(session)
+  if (!get('SELECT COUNT(*) AS count FROM set_logs WHERE session_id=?', session.id).count) fail(400, 'Log at least one set before finishing this workout.')
+  run("UPDATE workout_sessions SET status='finished', finished_at=? WHERE id=? AND user_id=? AND status='active'", now(), session.id, req.user.id)
+  res.json({ ok: true })
+})
+app.post('/api/workouts/:id/abandon', (req, res) => {
+  const session = ownWorkout(req)
+  if (session.status === 'abandoned') return res.json({ ok: true })
+  requireActive(session)
+  run("UPDATE workout_sessions SET status='abandoned', finished_at=? WHERE id=? AND user_id=? AND status='active'", now(), session.id, req.user.id)
+  res.json({ ok: true })
+})
+
+// History
+app.get('/api/history', (req, res) => {
+  const zone = zoneFor(req)
+  const month = typeof req.query.month === 'string' ? req.query.month : new Date().toISOString().slice(0, 7)
+  const bounds = monthBounds(month, zone)
+  if (!bounds) fail(400, 'Choose a valid month.')
+  const sessions = all("SELECT ws.id, ws.started_at AS startedAt, ws.finished_at AS finishedAt, t.name FROM workout_sessions ws JOIN templates t ON t.id=ws.template_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<? ORDER BY ws.finished_at DESC", req.user.id, ...bounds)
+  const sets = all("SELECT sl.session_id AS sessionId, sl.exercise_id AS exerciseId, e.name, sl.set_number AS setNumber, sl.weight, sl.reps FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<? ORDER BY sl.exercise_id, sl.set_number", req.user.id, ...bounds)
+  const grouped = new Map()
+  for (const { sessionId, ...set } of sets) { if (!grouped.has(sessionId)) grouped.set(sessionId, []); grouped.get(sessionId).push({ ...set }) }
+  res.json({ sessions: sessions.map((session) => ({ ...session, sets: grouped.get(session.id) || [] })) })
+})
+app.delete('/api/history/:id', (req, res) => {
+  const session = get("SELECT id FROM workout_sessions WHERE id=? AND user_id=? AND status='finished'", id(req.params.id), req.user.id)
+  if (!session) fail(404, 'Session not found.')
+  transaction(() => {
+    run('DELETE FROM set_requests WHERE session_id=?', session.id)
+    run('DELETE FROM set_logs WHERE session_id=?', session.id)
+    run('DELETE FROM workout_sessions WHERE id=?', session.id)
+  })
+  res.json({ ok: true })
+})
+
+app.all('/api/*splat', () => fail(404, 'API endpoint not found.'))
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error)
+  if (error instanceof HttpError) return res.status(error.status).json({ error: error.message })
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Request body is too large.' })
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' })
+  console.error('API request failed:', error)
+  res.status(500).json({ error: 'Something went wrong. Please try again.' })
+})
 
 const dist = path.join(root, 'dist')
 app.use(express.static(dist))

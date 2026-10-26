@@ -33,12 +33,12 @@ Gym Track is a mobile-first responsive web application for logging strength trai
 | Hosting | Local laptop (single machine), served over HTTP on the LAN |
 | Access | Phone browser via LAN IP (e.g., `http://192.168.x.x:PORT`), same Wi-Fi only |
 | Primary target | iPhone 15 — Safari, 393 × 852 pt viewport, Dynamic Island, safe-area insets |
-| Secondary | Desktop browser (laptop itself) — usable, but UI is mobile-first |
+| Secondary | Android phones, tablets, and desktop browsers — adaptive navigation and page layouts |
 | Connectivity | Fully functional with no internet access (local assets only, no CDN) |
 
 ### 2.1 Responsive Design Rules
 
-- Mobile-first layout; max content width ~480 px centered on desktop.
+- Responsive layout: compact screens on phones, wider grids on tablets, and a sidebar with a content area up to 1440 px on desktop. Desktop navigation begins at 1024 px.
 - Respect `env(safe-area-inset-top/bottom)` (Dynamic Island & home indicator).
 - Touch targets ≥ 44 × 44 pt; numeric inputs open the numeric keypad (`inputmode="decimal"`).
 - No horizontal scrolling at 393 pt width, including during an active workout.

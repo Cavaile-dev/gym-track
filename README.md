@@ -1,6 +1,8 @@
 # Gym Track
 
-A local-first workout logger built for one-handed use on an iPhone-sized viewport.
+A local-first workout logger for phones, tablets, and desktop browsers, with a compact workout flow for one-handed use.
+
+The interface keeps bottom navigation on phones and tablets, then switches to a sidebar and wider page layouts at 1024 px. Schedules and the movement library use multiple columns when space allows. Popup sizing follows the visible viewport, including mobile keyboard changes, with safe-area spacing for phones. Pinch zoom and reduced-motion preferences are supported.
 
 ## Run locally
 
