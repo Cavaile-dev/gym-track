@@ -2,16 +2,18 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'reac
 import { createRoot } from 'react-dom/client'
 import { createPortal } from 'react-dom'
 import { sortTemplatesByDay } from './schedules.js'
+import { AccountDropdown, Profile, Settings } from './Account.jsx'
+import { defaultPreferences, readPreferences, savePreferences } from './accountPreferences.js'
 import { api, post, createSetWriter, mutateAndRefresh } from './requests.js'
 import './styles.css'
 import './responsive.css'
 
 const logo = '/assets/logo_sqr.jpg'
 const muscleGroupIcons = {
-  'Arms': '/assets/exercises/muscles/arms.svg',
-  'Biceps': '/assets/exercises/muscles/biceps.svg',
-  'Triceps': '/assets/exercises/muscles/triceps.svg',
-  'Forearms': '/assets/exercises/muscles/forearms.svg',
+  'Arms': '/assets/exercises/muscles/arms.svg?v=20261030',
+  'Biceps': '/assets/exercises/muscles/biceps.svg?v=20261030',
+  'Triceps': '/assets/exercises/muscles/triceps.svg?v=20261030',
+  'Forearms': '/assets/exercises/muscles/forearms.svg?v=20261030',
   'Back': '/assets/exercises/muscles/back.svg',
   'Lats': '/assets/exercises/muscles/lats.svg',
   'Upper Back': '/assets/exercises/muscles/upper-back.svg',
@@ -39,7 +41,7 @@ const formatRecordDate = (value) => {
 const formatKg = (value) => `${Number(value || 0).toLocaleString()} kg`
 
 const TRANSITION_MS = 300
-const pageOrder = ['dashboard', 'templates', 'exercises', 'history']
+const pageOrder = ['dashboard', 'templates', 'exercises', 'history', 'profile', 'settings']
 
 function Transition({ transitionKey, className = '', order, resetScroll = false, children }) {
   const root = useRef(null)
@@ -173,8 +175,8 @@ function ModalPresence({ open, overlay = true, label = 'Dialog', children }) {
   return overlay ? createPortal(presence, document.body) : presence
 }
 
-function CloseButton({ onClick, label = 'Close popup' }) {
-  return <button type="button" className="close-button" aria-label={label} onClick={onClick}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+function CloseButton({ onClick, label = 'Close popup', disabled = false }) {
+  return <button type="button" className="close-button" aria-label={label} disabled={disabled} onClick={onClick}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
 }
 
 function Auth({ onLogin }) {
@@ -200,7 +202,7 @@ function Layout({ user, page, setPage, onLogout, children }) {
   return <div className="app-shell">
     <header className="topbar">
       <button type="button" className="brand" aria-label="Gym Track home" onClick={() => setPage('dashboard')}><img className="brand-image small" src={logo} alt="" /><span className="brand-wordmark"><strong>GYM TRACK</strong><small>TRAINING JOURNAL</small></span></button>
-      <div className="user-menu"><span className="avatar" aria-label={`Signed in as ${user.username}`}>{user.username.slice(0, 1).toUpperCase()}</span><span className="user-name">{user.username}</span><button type="button" className="signout-button" aria-label="Sign out" title="Sign out" onClick={onLogout}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4H5v16h4M10 12h11m-4-4 4 4-4 4" /></svg></button></div>
+      <div className="user-menu"><AccountDropdown user={user} page={page} onNavigate={setPage} onLogout={onLogout} /></div>
     </header>
     <main className="page-wrap"><Transition transitionKey={page} order={pageOrder} resetScroll className="page-transition">{children}</Transition></main>
     <footer className="app-navigation"><div className="navigation-inner"><p className="navigation-caption">YOUR TRAINING</p><nav className="bottom-nav" aria-label="Main navigation">{navigation.map((item) => <button type="button" key={item.page} className={page === item.page ? 'active' : ''} aria-current={page === item.page ? 'page' : undefined} onClick={() => setPage(item.page)}><span className="nav-icon"><NavIcon type={item.icon} /></span><span>{item.label}</span><span className="navigation-arrow" aria-hidden="true">↗</span></button>)}</nav><div className="navigation-note"><span className="navigation-note-icon"><NavIcon type="exercise" /></span><strong>One more rep.</strong><span>A little stronger, every session.</span></div></div></footer>
@@ -279,9 +281,22 @@ function TemplateChooser({ templates, onSelect, onClose }) {
 function Stat({ label, value, detail }) { return <div className="stat-card"><span className="muted">{label}</span><strong>{value}</strong><small>{detail}</small></div> }
 
 function Templates({ data, setData }) {
-  const [editing, setEditing] = useState(null); const [showForm, setShowForm] = useState(false); const [error, setError] = useState(''); const deleting = useRef(false)
+  const [editing, setEditing] = useState(null); const [showForm, setShowForm] = useState(false); const [deleteError, setDeleteError] = useState(''); const [pendingDelete, setPendingDelete] = useState(null); const [deleteBusy, setDeleteBusy] = useState(false); const deleting = useRef(false)
+  const closeDelete = () => { if (!deleting.current) setPendingDelete(null) }
   const save = async (payload) => { const saved = editing ? await api(`/templates/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) }) : await post('/templates', payload); setData((current) => { const templates = editing ? current.templates.map((item) => item.id === saved.id ? saved : item) : [...current.templates, saved]; return { ...current, templates, today: templates.find((item) => item.scheduledDays.includes((new Date().getDay() + 6) % 7)) || null } }); setShowForm(false); setEditing(null) }
-  const remove = async (template) => { if (deleting.current || !window.confirm(`Delete ${template.name}?`)) return; deleting.current = true; setError(''); try { await api(`/templates/${template.id}`, { method: 'DELETE' }); setData((current) => { const templates = current.templates.filter((item) => item.id !== template.id); return { ...current, templates, today: templates.find((item) => item.scheduledDays.includes((new Date().getDay() + 6) % 7)) || null } }) } catch (e) { setError(e.message) } finally { deleting.current = false } }
+  const remove = async () => {
+    if (!pendingDelete || deleting.current) return
+    deleting.current = true; setDeleteBusy(true); setDeleteError('')
+    try {
+      await api(`/templates/${pendingDelete.id}`, { method: 'DELETE' })
+      setData((current) => {
+        const templates = current.templates.filter((item) => item.id !== pendingDelete.id)
+        return { ...current, templates, today: templates.find((item) => item.scheduledDays.includes((new Date().getDay() + 6) % 7)) || null }
+      })
+      setPendingDelete(null)
+    } catch (e) { setDeleteError(e.message) }
+    finally { deleting.current = false; setDeleteBusy(false) }
+  }
   const todayIndex = (new Date().getDay() + 6) % 7
   const edit = (template) => { setEditing(template); setShowForm(true) }
   return <section className="screen schedule-screen">
@@ -289,7 +304,7 @@ function Templates({ data, setData }) {
       <div><p className="eyebrow">YOUR TRAINING PLAN</p><h1>Schedule</h1></div>
       <button className="button primary schedule-create" onClick={() => edit(null)}><span aria-hidden="true">+</span> Create</button>
     </div>
-    <p className="intro-copy">Make room for your next good session.</p>{error && <p className="form-error" role="alert">{error}</p>}
+    <p className="intro-copy">Make room for your next good session.</p>
     {data.templates.length > 0 && <div className="schedule-list-heading"><h2>Your routines</h2><span>{data.templates.length} {data.templates.length === 1 ? 'schedule' : 'schedules'}</span></div>}
     <div className="template-list">
       {sortTemplatesByDay(data.templates).map((template, index) => {
@@ -309,38 +324,62 @@ function Templates({ data, setData }) {
           </div>
           <div className="template-actions">
             <button className="template-edit" onClick={() => edit(template)}>Edit schedule <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button>
-            <button className="template-delete" aria-label={`Delete ${template.name}`} title="Delete schedule" onClick={() => remove(template)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button>
+            <button className="template-delete" aria-label={`Delete ${template.name}`} title="Delete schedule" onClick={() => { setDeleteError(''); setPendingDelete(template) }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button>
           </div>
         </article>
       })}
       {!data.templates.length && <div className="blank-state schedule-empty"><span className="schedule-empty-icon"><SessionMetaIcon type="calendar" /></span><p className="eyebrow">A LITTLE STRUCTURE. MORE PROGRESS.</p><h2>Find your weekly rhythm.</h2><p className="muted">Choose your movements, pick your days,<br />and have a plan ready when you are.</p><button className="button primary" onClick={() => edit(null)}>+ Create your first schedule</button></div>}
     </div>
     <ModalPresence open={showForm} label="Schedule editor"><TemplateForm initial={editing} exercises={data.exercises} onSave={save} onClose={() => { setShowForm(false); setEditing(null) }} /></ModalPresence>
+    <ModalPresence open={Boolean(pendingDelete)} label="Delete schedule">
+      <div className="modal-backdrop"><div className="modal sheet small-sheet delete-schedule-sheet">
+        <div className="modal-header"><div><p className="eyebrow">YOUR TRAINING PLAN</p><h2>Delete this schedule?</h2></div><CloseButton onClick={closeDelete} disabled={deleteBusy} /></div>
+        <p className="modal-copy">This schedule will be removed from your training plan. Your workout history will stay saved.</p>
+        <div className="delete-schedule-preview"><span className="exercise-icon"><SessionMetaIcon type="calendar" /></span><div><strong>{pendingDelete?.name}</strong><span>{pendingDelete?.exercises.length} {pendingDelete?.exercises.length === 1 ? 'exercise' : 'exercises'} · {pendingDelete?.scheduledDays.length ? pendingDelete.scheduledDays.map((day) => weekdays[day]).join(' / ') : 'No days assigned'}</span></div></div>
+        {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
+        <div className="modal-actions"><button type="button" className="button secondary" disabled={deleteBusy} onClick={closeDelete}>Cancel</button><button type="button" className="button danger" disabled={deleteBusy} onClick={remove}>{deleteBusy ? 'Deleting…' : 'Delete schedule'}</button></div>
+      </div></div>
+    </ModalPresence>
   </section>
 }
 function Exercises({ data, setData }) {
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState('All')
+  const [showAllGroups, setShowAllGroups] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [error, setError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const deleteLock = useRef(false)
+  const closeDelete = () => { if (!deleteLock.current) setPendingDelete(null) }
   const groups = ['All', ...new Set(data.exercises.map((exercise) => exercise.muscleGroup))]
   const filtered = data.exercises.filter((exercise) => (group === 'All' || exercise.muscleGroup === group) && `${exercise.name} ${exercise.muscleGroup}`.toLowerCase().includes(query.toLowerCase()))
-  const remove = async (exercise) => {
-    if (!window.confirm(`Delete ${exercise.name}?`)) return
-    setError('')
+  const remove = async () => {
+    if (!pendingDelete || deleteLock.current) return
+    deleteLock.current = true; setDeleting(true); setDeleteError('')
     try {
-      await api(`/exercises/${exercise.id}`, { method: 'DELETE' })
-      setData({ ...data, exercises: data.exercises.filter((item) => item.id !== exercise.id) })
-    } catch (error) { setError(error.message) }
+      await api(`/exercises/${pendingDelete.id}`, { method: 'DELETE' })
+      setData((current) => ({ ...current, exercises: current.exercises.filter((item) => item.id !== pendingDelete.id) }))
+      setPendingDelete(null)
+    } catch (error) { setDeleteError(error.message) }
+    finally { deleteLock.current = false; setDeleting(false) }
   }
   return <section className="screen exercises-screen">
     <div className="screen-heading library-heading"><div className="library-heading-title"><p className="eyebrow">MOVEMENT LIBRARY</p><h1>Exercises</h1></div><div className="library-search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg><input className="library-search" aria-label="Search exercises" placeholder="Search exercises or muscle groups" value={query} onChange={(event) => setQuery(event.target.value)} /></div><button className="button primary library-add" onClick={() => setShowForm(true)}><span aria-hidden="true">+</span> Add custom</button></div>
     <p className="intro-copy">Find your movement. Build your next session.</p>
-    <div className="library-filters" aria-label="Filter by muscle group">{groups.map((item) => <button type="button" key={item} className={group === item ? 'is-active' : ''} aria-pressed={group === item} onClick={() => setGroup(item)}>{item}</button>)}</div>
-    {error && <p className="form-error library-error">{error}</p>}
-    <div className="exercise-library">{filtered.map((exercise) => <div className="library-row" key={exercise.id}><span className="exercise-icon"><MuscleIcon group={exercise.muscleGroup} /></span><div><strong>{exercise.name}</strong><small>{exercise.muscleGroup}</small></div>{exercise.isCustom ? <><em>Custom</em><button className="library-delete" aria-label={`Delete ${exercise.name}`} onClick={() => remove(exercise)}>×</button></> : <span className="built-in-label">Built-in</span>}</div>)}</div>
+    <div className="library-filters" aria-label="Filter by muscle group">{(showAllGroups ? groups : groups.slice(0, 5)).map((item) => <button type="button" key={item} className={group === item ? 'is-active' : ''} aria-pressed={group === item} onClick={() => setGroup(item)}>{item}</button>)}{groups.length > 5 && <button type="button" className="library-filter-toggle" aria-expanded={showAllGroups} onClick={() => setShowAllGroups((current) => !current)}>{showAllGroups ? 'Show Less −' : 'Show All +'}</button>}</div>
+    <div className="exercise-library">{filtered.map((exercise) => <div className="library-row" key={exercise.id}><span className="exercise-icon"><MuscleIcon group={exercise.muscleGroup} /></span><div><strong>{exercise.name}</strong><small>{exercise.muscleGroup}</small></div>{exercise.isCustom ? <><em>Custom</em><button className="library-delete" aria-label={`Delete ${exercise.name}`} onClick={() => { setDeleteError(''); setPendingDelete(exercise) }}>×</button></> : <span className="built-in-label">Built-in</span>}</div>)}</div>
     {!filtered.length && <div className="library-empty"><NavIcon type="exercise" /><h2>No movements found</h2><p>Try another name or muscle group.</p><button type="button" className="button secondary" onClick={() => { setQuery(''); setGroup('All') }}>Clear filters</button></div>}
     <ModalPresence open={showForm} label="Add custom movement"><CustomExerciseModal onSave={(exercise) => { setData({ ...data, exercises: [...data.exercises, exercise] }); setShowForm(false) }} onClose={() => setShowForm(false)} /></ModalPresence>
+    <ModalPresence open={Boolean(pendingDelete)} label="Delete custom movement">
+      <div className="modal-backdrop"><div className="modal sheet small-sheet delete-movement-sheet">
+        <div className="modal-header"><div><p className="eyebrow">MOVEMENT LIBRARY</p><h2>Delete this movement?</h2></div><CloseButton onClick={closeDelete} disabled={deleting} /></div>
+        <p className="modal-copy">This custom movement will be permanently removed from your library.</p>
+        <div className="delete-movement-preview"><span className="exercise-icon"><MuscleIcon group={pendingDelete?.muscleGroup} /></span><div><strong>{pendingDelete?.name}</strong><span>{pendingDelete?.muscleGroup}</span></div></div>
+        {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
+        <div className="modal-actions"><button type="button" className="button secondary" disabled={deleting} onClick={closeDelete}>Cancel</button><button type="button" className="button danger" disabled={deleting} onClick={remove}>{deleting ? 'Deleting…' : 'Delete movement'}</button></div>
+      </div></div>
+    </ModalPresence>
   </section>
 }
 
@@ -425,7 +464,7 @@ function TemplateForm({ initial, exercises, onSave, onClose }) {
   const reorder = (target) => { if (dragging === null || dragging === target) return; const next = [...selected]; const [item] = next.splice(dragging, 1); next.splice(target, 0, item); setSelected(next); setDragging(null) }
   const add = (exercise) => setSelected([...selected, { ...exercise, targetSets: 3 }]); const toggleDay = (index) => setDays(days.includes(index) ? days.filter((day) => day !== index) : [...days, index].sort())
   const submit = async () => { if (saving.current) return; if (!name.trim() || !selected.length) return setError('Add a name and at least one exercise.'); saving.current = true; setBusy(true); setError(''); try { await onSave({ name: name.trim(), scheduledDays: days, exercises: selected }) } catch (e) { setError(e.message) } finally { saving.current = false; setBusy(false) } }
-  return <div className="modal-backdrop"><div className="modal sheet template-sheet"><div className="modal-header"><div><p className="eyebrow">{initial ? 'EDIT TEMPLATE' : 'NEW TEMPLATE'}</p><h2>{initial ? 'Tune your session' : 'Create a session'}</h2></div><CloseButton onClick={onClose} /></div><label>Template name<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Upper body" /></label><label className="label-gap">Schedule <span className="optional">choose all that apply</span></label><div className="day-picker">{weekdays.map((day, index) => <button type="button" className={days.includes(index) ? 'selected' : ''} key={day} onClick={() => toggleDay(index)}>{day}</button>)}</div><label className="label-gap">Exercises</label><div className="selected-exercises">{selected.map((exercise, index) => <div className="selected-row" draggable onDragStart={() => setDragging(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(index)} key={exercise.id}><span className="drag">≡</span><strong>{exercise.name}</strong><label><input inputMode="numeric" type="number" min="1" max="20" value={exercise.targetSets} onChange={(e) => setSelected(selected.map((item) => item.id === exercise.id ? { ...item, targetSets: e.target.value } : item))} /> sets</label><button className="remove-button" onClick={() => setSelected(selected.filter((_, i) => i !== index))}>×</button></div>)}</div><div className="template-exercise-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setExercisePickerOpen(false) }} onKeyDown={(event) => { if (event.key === "Escape" && exercisePickerOpen) { event.stopPropagation(); setExercisePickerOpen(false) } }}><input className="search-input" aria-label="Search exercises" aria-expanded={exercisePickerOpen} aria-controls={exerciseResultsId} placeholder="Search exercises" value={query} onFocus={() => setExercisePickerOpen(true)} onClick={() => setExercisePickerOpen(true)} onChange={(e) => { setQuery(e.target.value); setExercisePickerOpen(true) }} />{exercisePickerOpen && <div id={exerciseResultsId} className="exercise-results">{!filtered.length && <p className="exercise-picker-empty">No matching exercises. Create one below.</p>}{filtered.map((exercise) => <button key={exercise.id} onClick={() => { add(exercise); setQuery('') }}><span>{exercise.name}</span><small>{exercise.muscleGroup}</small><b>+</b></button>)}<CustomExercise onAdd={(exercise) => { add(exercise); setQuery('') }} /></div>}</div>{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save template'}</button></div></div></div>
+  return <div className="modal-backdrop"><div className="modal sheet template-sheet"><div className="modal-header"><div><p className="eyebrow">{initial ? 'EDIT TEMPLATE' : 'NEW TEMPLATE'}</p><h2>{initial ? 'Tune your session' : 'Create a session'}</h2></div><CloseButton onClick={onClose} /></div><div className="template-form-body"><label>Template name<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Push Day" /></label><label className="label-gap">Schedule <span className="optional">choose all that apply</span></label><div className="day-picker">{weekdays.map((day, index) => <button type="button" className={days.includes(index) ? 'selected' : ''} key={day} onClick={() => toggleDay(index)}>{day}</button>)}</div><label className="label-gap">Exercises</label><div className="selected-exercises">{selected.map((exercise, index) => <div className="selected-row" draggable onDragStart={() => setDragging(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(index)} key={exercise.id}><span className="drag">≡</span><strong>{exercise.name}</strong><label><input inputMode="numeric" type="number" min="1" max="20" value={exercise.targetSets} onChange={(e) => setSelected(selected.map((item) => item.id === exercise.id ? { ...item, targetSets: e.target.value } : item))} /> sets</label><button className="remove-button" onClick={() => setSelected(selected.filter((_, i) => i !== index))}>×</button></div>)}</div><div className="template-exercise-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setExercisePickerOpen(false) }} onKeyDown={(event) => { if (event.key === "Escape" && exercisePickerOpen) { event.stopPropagation(); setExercisePickerOpen(false) } }}><input className="search-input" aria-label="Search exercises" aria-expanded={exercisePickerOpen} aria-controls={exerciseResultsId} placeholder="Search exercises" value={query} onFocus={() => setExercisePickerOpen(true)} onClick={() => setExercisePickerOpen(true)} onChange={(e) => { setQuery(e.target.value); setExercisePickerOpen(true) }} /><div className={`exercise-results-presence${exercisePickerOpen ? " is-open" : ""}`} inert={!exercisePickerOpen} aria-hidden={!exercisePickerOpen}><div className="exercise-results-clip"><div id={exerciseResultsId} className="exercise-results">{!filtered.length && <p className="exercise-picker-empty">No matching exercises. Create one below.</p>}{filtered.map((exercise) => <button key={exercise.id} onClick={() => { add(exercise); setQuery('') }}><span>{exercise.name}</span><small>{exercise.muscleGroup}</small><b>+</b></button>)}<CustomExercise onAdd={(exercise) => { add(exercise); setQuery('') }} /></div></div></div></div>{error && <p className="form-error">{error}</p>}</div><div className="modal-actions"><button className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save template'}</button></div></div></div>
 }
 function CustomExercise({ onAdd }) {
   const [custom, setCustom] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const saving = useRef(false)
@@ -435,8 +474,8 @@ function CustomExercise({ onAdd }) {
 
 function QuickAdjust({ value, values, onChange, disabled = false }) { const adjust = (amount) => onChange(String(Math.max(0, (Number(value) || 0) + amount))); return <div className="quick-adjust">{values.map((amount) => <React.Fragment key={amount}><button type="button" disabled={disabled} onClick={() => adjust(-Number(amount))} className="quick-adjust-minus" aria-label={`Decrease by ${amount}`}><span aria-hidden="true">−</span><span>{amount}</span></button><button type="button" disabled={disabled} onClick={() => adjust(Number(amount))} className="quick-adjust-plus" aria-label={`Increase by ${amount}`}><span aria-hidden="true">+</span><span>{amount}</span></button></React.Fragment>)}</div> }
 function RestTimer({ timer, duration, setTimer, exercise, setNumber, totalSets }) { return <section className="rest-screen"><div className="rest-center"><div className="rest-ring" style={{ '--timer-progress': `${(timer / duration) * 360}deg` }}><strong>{timer}</strong><span>seconds</span></div><h1>Recover.</h1><p className="muted">Reset your energy. Make the next set your strongest.</p></div><div className="rest-actions"><div className="rest-details"><p className="eyebrow">REST TIMER</p><p className="rest-set-context"><strong>{exercise}</strong><span className="dot-sep" aria-hidden="true">·</span><span className="rest-set-progress">Set {setNumber} / {totalSets}</span></p></div><div className="timer-controls"><button className="timer-minus" onClick={() => setTimer(Math.max(0, timer - 15))}>− 15s</button><button className="timer-plus" onClick={() => setTimer(timer + 15)}>+ 15s</button></div><button className="button primary full" onClick={() => setTimer(0)}>Skip rest <span>→</span></button></div></section> }
-function Workout({ workout, onFinish, onAbandon }) {
-  const [timer, setTimer] = useState(0); const [duration, setDuration] = useState(90); const [weight, setWeight] = useState(''); const [reps, setReps] = useState(''); const [error, setError] = useState(''); const [logs, setLogs] = useState(workout.logs || []); const [exerciseIndex, setExerciseIndex] = useState(() => workout.template.exercises.findIndex((exercise) => (workout.logs || []).filter((log) => log.exerciseId === exercise.id).length < exercise.targetSets) < 0 ? 0 : workout.template.exercises.findIndex((exercise) => (workout.logs || []).filter((log) => log.exerciseId === exercise.id).length < exercise.targetSets)); const [extraSets, setExtraSets] = useState(0)
+function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
+  const [timer, setTimer] = useState(0); const [duration, setDuration] = useState(restDuration); const [weight, setWeight] = useState(''); const [reps, setReps] = useState(''); const [error, setError] = useState(''); const [logs, setLogs] = useState(workout.logs || []); const [exerciseIndex, setExerciseIndex] = useState(() => workout.template.exercises.findIndex((exercise) => (workout.logs || []).filter((log) => log.exerciseId === exercise.id).length < exercise.targetSets) < 0 ? 0 : workout.template.exercises.findIndex((exercise) => (workout.logs || []).filter((log) => log.exerciseId === exercise.id).length < exercise.targetSets)); const [extraSets, setExtraSets] = useState(0)
   const [saving, setSaving] = useState(false); const [retrySave, setRetrySave] = useState(false); const mutationLock = useRef(false)
   const writer = useRef(null)
   const editPrefill = useRef(null)
@@ -528,10 +567,36 @@ function History({ data, setData }) {
 }
 
 function shiftMonth(value, amount, set) { const date = new Date(`${value}-01T00:00:00`); date.setMonth(date.getMonth() + amount); set(localMonth(date)) }
-function SessionDetail({ session, onClose, onDeleted }) { const [exerciseHistory, setExerciseHistory] = useState(null); const [deleting, setDeleting] = useState(false); const [error, setError] = useState(''); const grouped = Object.values(session.sets.reduce((all, set) => { (all[set.exerciseId] ||= { id: set.exerciseId, name: set.name, sets: [] }).sets.push(set); return all }, {})); const showHistory = async (exercise) => { setError(''); try { setExerciseHistory({ ...exercise, ...(await api(`/exercises/${exercise.id}/history?templateId=${session.templateId}`)) }) } catch (e) { setError(e.message) } }; const deleteSession = async () => { if (!window.confirm('Delete this workout session and all its sets?')) return; setDeleting(true); try { await api(`/history/${session.id}`, { method: 'DELETE' }); await onDeleted(session.id) } catch (e) { setError(e.message) } finally { setDeleting(false) } }; return <div className="detail-card"><div className="detail-header"><div><p className="eyebrow">{formatDate(session.finishedAt, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h2>{session.name}</h2></div><CloseButton onClick={onClose} /></div>{exerciseHistory ? <div className="progression"><button className="back-link" onClick={() => setExerciseHistory(null)}>← All exercises</button><h3>{exerciseHistory.name}</h3><p className="muted">{exerciseHistory.templateName}</p>{exerciseHistory.sessions.map((item, index) => { const previous = exerciseHistory.sessions[index - 1]; const change = previous ? item.weight - previous.weight : 0; return <div className="progression-row" key={`${item.date}-${index}`}><span>{formatDate(item.date)}</span><strong>{item.weight} kg × {item.reps}</strong><b className={change > 0 ? 'up' : change < 0 ? 'down' : ''}>{change > 0 ? '↑' : change < 0 ? '↓' : '='}</b></div> })}</div> : grouped.map((exercise) => <button className="detail-exercise detail-button" key={exercise.name} onClick={() => showHistory(exercise)}><strong>{exercise.name}</strong><div>{exercise.sets.map((set) => <span key={set.setNumber}>{set.weight} kg × {set.reps}</span>)}</div><small>View progression →</small></button>)}{error && <p className="form-error" role="alert">{error}</p>}<button className="danger-button session-delete" disabled={deleting} onClick={deleteSession}>{deleting ? 'Deleting...' : 'Delete session'}</button></div> }
+function SessionDetail({ session, onClose, onDeleted }) { const [exerciseHistory, setExerciseHistory] = useState(null); const [deleting, setDeleting] = useState(false); const [error, setError] = useState(''); const [deleteOpen, setDeleteOpen] = useState(false); const [deleteError, setDeleteError] = useState(''); const deleteLock = useRef(false); const closeDelete = () => { if (!deleteLock.current) setDeleteOpen(false) }; const grouped = Object.values(session.sets.reduce((all, set) => { (all[set.exerciseId] ||= { id: set.exerciseId, name: set.name, sets: [] }).sets.push(set); return all }, {})); const showHistory = async (exercise) => { setError(''); try { setExerciseHistory({ ...exercise, ...(await api(`/exercises/${exercise.id}/history?templateId=${session.templateId}`)) }) } catch (e) { setError(e.message) } }; const deleteSession = async () => {
+    if (deleteLock.current) return
+    deleteLock.current = true; setDeleting(true); setDeleteError('')
+    try {
+      await api(`/history/${session.id}`, { method: 'DELETE' })
+      setDeleteOpen(false)
+      await onDeleted(session.id)
+    } catch (e) { setDeleteError(e.message) }
+    finally { deleteLock.current = false; setDeleting(false) }
+  }; return <div className="detail-card"><div className="detail-header"><div><p className="eyebrow">{formatDate(session.finishedAt, { weekday: 'long', month: 'long', day: 'numeric' })}</p><h2>{session.name}</h2></div><CloseButton onClick={onClose} disabled={deleting} /></div>{exerciseHistory ? <div className="progression"><button className="back-link" onClick={() => setExerciseHistory(null)}>← All exercises</button><h3>{exerciseHistory.name}</h3><p className="muted">{exerciseHistory.templateName}</p>{exerciseHistory.sessions.map((item, index) => { const previous = exerciseHistory.sessions[index - 1]; const change = previous ? item.weight - previous.weight : 0; return <div className="progression-row" key={`${item.date}-${index}`}><span>{formatDate(item.date)}</span><strong>{item.weight} kg × {item.reps}</strong><b className={change > 0 ? 'up' : change < 0 ? 'down' : ''}>{change > 0 ? '↑' : change < 0 ? '↓' : '='}</b></div> })}</div> : grouped.map((exercise) => <button className="detail-exercise detail-button" key={exercise.name} onClick={() => showHistory(exercise)}><strong>{exercise.name}</strong><div>{exercise.sets.map((set) => <span key={set.setNumber}>{set.weight} kg × {set.reps}</span>)}</div><small>View progression →</small></button>)}{error && <p className="form-error" role="alert">{error}</p>}<button className="danger-button session-delete" disabled={deleting} onClick={() => { setDeleteError(''); setDeleteOpen(true) }}>Delete session</button>
+    <ModalPresence open={deleteOpen} label="Delete history session">
+      <div className="modal-backdrop"><div className="modal sheet small-sheet delete-session-sheet">
+        <div className="modal-header"><div><p className="eyebrow">WORKOUT HISTORY</p><h2>Delete this session?</h2></div><CloseButton onClick={closeDelete} disabled={deleting} /></div>
+        <p className="modal-copy">This workout session and all its logged sets will be permanently deleted.</p>
+        <div className="delete-session-preview"><span className="exercise-icon"><SessionMetaIcon type="calendar" /></span><div><strong>{session.name}</strong><span>{formatRecordDate(session.finishedAt)} · {session.sets.length} {session.sets.length === 1 ? 'set' : 'sets'}</span></div></div>
+        {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
+        <div className="modal-actions"><button type="button" className="button secondary" disabled={deleting} onClick={closeDelete}>Cancel</button><button type="button" className="button danger" disabled={deleting} onClick={deleteSession}>{deleting ? 'Deleting…' : 'Delete session'}</button></div>
+      </div></div>
+    </ModalPresence>
+  </div> }
 
 function App() {
   const [user, setUser] = useState(undefined); const [data, setData] = useState(null); const [page, setPage] = useState('dashboard'); const [workout, setWorkout] = useState(null); const [loading, setLoading] = useState(true)
+  const [preferences, setPreferences] = useState(defaultPreferences)
+  useEffect(() => { setPreferences(user ? readPreferences(user.id) : { ...defaultPreferences }) }, [user?.id])
+  useEffect(() => {
+    document.documentElement.dataset.reduceMotion = String(preferences.reduceMotion)
+    return () => { delete document.documentElement.dataset.reduceMotion }
+  }, [preferences.reduceMotion])
+  const updatePreferences = (next) => { savePreferences(user.id, next); setPreferences(next) }
   const [problem, setProblem] = useState(''); const [busy, setBusy] = useState(false); const [leaveOpen, setLeaveOpen] = useState(false); const actionLock = useRef(false)
   useEffect(() => {
     const viewport = window.visualViewport
@@ -589,7 +654,7 @@ function App() {
   }
   if (loading || ((user === undefined || (user && !data)) && !problem)) return <div className="loading-screen"><img className="brand-image loading-logo" src={logo} alt="Gym Track" /></div>
   if (user === undefined || (user && !data)) return <main className="connection-screen"><img className="brand-image" src={logo} alt="Gym Track" /><h1>Let’s reconnect.</h1><p role="alert">{problem}</p><p>Your saved changes are kept. Retry to load your data.</p><button className="button primary" disabled={busy} onClick={() => perform(loadSession)}>{busy ? 'Reconnecting…' : 'Retry connection'}</button>{user && <button className="text-button" disabled={busy} onClick={logout}>Sign out</button>}</main>
-  const content = !user ? <Auth onLogin={login} /> : workout ? <Workout key={workout.id} workout={workout} onFinish={finish} onAbandon={abandon} /> : <Layout user={user} page={page} setPage={setPage} onLogout={logout}>{page === 'dashboard' && <Dashboard data={data} user={user} onStart={start} setPage={setPage} />}{page === 'templates' && <Templates data={data} setData={setData} />}{page === 'exercises' && <Exercises data={data} setData={setData} />}{page === 'history' && <History data={data} setData={setData} />}</Layout>
+  const content = !user ? <Auth onLogin={login} /> : workout ? <Workout key={workout.id} restDuration={preferences.restDuration} workout={workout} onFinish={finish} onAbandon={abandon} /> : <Layout user={user} page={page} setPage={setPage} onLogout={logout}>{page === 'dashboard' && <Dashboard data={data} user={user} onStart={start} setPage={setPage} />}{page === 'templates' && <Templates data={data} setData={setData} />}{page === 'exercises' && <Exercises data={data} setData={setData} />}{page === 'history' && <History data={data} setData={setData} />}{page === 'profile' && <Profile user={user} stats={data.stats} onSaved={setUser} />}{page === 'settings' && <Settings Modal={ModalPresence} preferences={preferences} onSave={updatePreferences} onLogout={logout} />}</Layout>
   return <>{(problem || busy) && <div className="app-feedback" role={problem ? 'alert' : 'status'}><span>{problem || 'Saving changes…'}</span>{problem && <button type="button" aria-label="Dismiss message" onClick={() => setProblem('')}>×</button>}</div>}<Transition transitionKey={!user ? 'auth' : workout ? 'workout' : 'app'} resetScroll className="app-transition">{content}</Transition><ModalPresence open={leaveOpen} label="Leave this workout?"><div className="modal-backdrop"><div className="modal sheet small-sheet leave-workout-sheet"><div className="modal-header"><div><p className="eyebrow">END SESSION</p><h2>Leave this workout?</h2></div><CloseButton onClick={() => { if (!actionLock.current) setLeaveOpen(false) }} /></div><p className="modal-copy">Your logged sets will be archived.</p>{problem && <p className="form-error" role="alert">{problem}</p>}<div className="modal-actions"><button type="button" className="button secondary keep-training-button" disabled={busy} onClick={() => setLeaveOpen(false)}>Keep training</button><button type="button" className="button danger" disabled={busy} onClick={() => abandon(true)}>{busy ? 'Leaving…' : 'Leave workout'}</button></div></div></div></ModalPresence></>
 }
 
