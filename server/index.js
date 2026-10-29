@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { dateContext, monthBounds, timeZone, weekKey } from './time.js'
+import { dateContext, dayKey, monthBounds, timeZone } from './time.js'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const databasePath = process.env.DATABASE_PATH || path.join(root, 'gym-track.sqlite')
@@ -188,11 +188,11 @@ function activeShape(session) {
   const logs = all('SELECT id, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, logged_at AS loggedAt FROM set_logs WHERE session_id=? ORDER BY logged_at, id', session.id)
   const previous = all(`SELECT exerciseId, weight, reps, finishedAt FROM (
     SELECT sl.exercise_id AS exerciseId, sl.weight, sl.reps, ws.finished_at AS finishedAt,
-      ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY ws.finished_at DESC, sl.set_number ASC) AS rank
+      ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY ws.finished_at DESC, ws.id DESC, sl.set_number ASC) AS rank
     FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id
-    WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at<?
+    WHERE ws.user_id=? AND ws.template_id=? AND ws.status='finished' AND ws.finished_at<?
       AND sl.exercise_id IN (SELECT exercise_id FROM template_exercises WHERE template_id=?)
-  ) WHERE rank=1`, session.user_id, session.started_at, session.template_id)
+  ) WHERE rank=1`, session.user_id, session.template_id, session.started_at, session.template_id)
   return { id: session.id, template, startedAt: session.started_at, logs, previous: Object.fromEntries(previous.map((entry) => [entry.exerciseId, entry])) }
 }
 function stats(userId, zone) {
@@ -210,15 +210,12 @@ function stats(userId, zone) {
     ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY sl.weight DESC, sl.reps DESC, ws.finished_at DESC) AS rank
     FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id JOIN workout_sessions ws ON ws.id=sl.session_id
     WHERE ws.user_id=? AND ws.status='finished') WHERE rank=1 ORDER BY weight DESC, reps DESC LIMIT 3`, userId)
-  const dates = all("SELECT finished_at AS date FROM workout_sessions WHERE user_id=? AND status='finished' ORDER BY finished_at DESC LIMIT 2000", userId)
-  const weeks = new Set(dates.map((entry) => weekKey(entry.date, zone)))
-  let streak = 0
-  const cursor = new Date(`${context.weekKey}T00:00:00Z`)
-  while (weeks.has(cursor.toISOString().slice(0, 10))) { streak++; cursor.setUTCDate(cursor.getUTCDate() - 7) }
+  const dates = all("SELECT DISTINCT finished_at AS date FROM workout_sessions WHERE user_id=? AND status='finished'", userId)
+  const totalDays = new Set(dates.map((entry) => dayKey(entry.date, zone))).size
   return {
     workoutsWeek: totals.workoutsWeek, workoutsMonth: totals.workoutsMonth, volume: Math.round(totals.volume),
     volumeDelta: totals.previousVolume ? Math.round((totals.volume - totals.previousVolume) / totals.previousVolume * 100) : null,
-    records: records.map((record) => ({ ...record })), streak,
+    records: records.map((record) => ({ ...record })), totalDays,
   }
 }
 function bootstrap(userId, zone) {
@@ -313,10 +310,13 @@ app.delete('/api/exercises/:id', (req, res) => {
 })
 app.get('/api/exercises/:id/history', (req, res) => {
   const exerciseId = id(req.params.id)
+  const templateId = id(req.query.templateId)
+  const template = get('SELECT id, name FROM templates WHERE id=? AND user_id=?', templateId, req.user.id)
+  if (!template) fail(404, 'Schedule not found.')
   const exercise = get('SELECT name FROM exercises WHERE id=? AND (is_custom=0 OR created_by=?)', exerciseId, req.user.id)
   if (!exercise) fail(404, 'Exercise not found.')
-  const sessions = all("SELECT ws.finished_at AS date, sl.weight, sl.reps FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND sl.exercise_id=? AND ws.status='finished' ORDER BY ws.finished_at, sl.set_number", req.user.id, exerciseId)
-  res.json({ exercise: exercise.name, sessions })
+  const sessions = all("SELECT ws.finished_at AS date, sl.weight, sl.reps FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND ws.template_id=? AND sl.exercise_id=? AND ws.status='finished' ORDER BY ws.finished_at, ws.id, sl.set_number", req.user.id, templateId, exerciseId)
+  res.json({ exercise: exercise.name, templateId, templateName: template.name, sessions })
 })
 
 // Schedules (templates)
@@ -412,7 +412,7 @@ app.get('/api/history', (req, res) => {
   const month = typeof req.query.month === 'string' ? req.query.month : new Date().toISOString().slice(0, 7)
   const bounds = monthBounds(month, zone)
   if (!bounds) fail(400, 'Choose a valid month.')
-  const sessions = all("SELECT ws.id, ws.started_at AS startedAt, ws.finished_at AS finishedAt, t.name FROM workout_sessions ws JOIN templates t ON t.id=ws.template_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<? ORDER BY ws.finished_at DESC", req.user.id, ...bounds)
+  const sessions = all("SELECT ws.id, ws.template_id AS templateId, ws.started_at AS startedAt, ws.finished_at AS finishedAt, t.name FROM workout_sessions ws JOIN templates t ON t.id=ws.template_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<? ORDER BY ws.finished_at DESC", req.user.id, ...bounds)
   const sets = all("SELECT sl.session_id AS sessionId, sl.exercise_id AS exerciseId, e.name, sl.set_number AS setNumber, sl.weight, sl.reps FROM set_logs sl JOIN exercises e ON e.id=sl.exercise_id JOIN workout_sessions ws ON ws.id=sl.session_id WHERE ws.user_id=? AND ws.status='finished' AND ws.finished_at>=? AND ws.finished_at<? ORDER BY sl.exercise_id, sl.set_number", req.user.id, ...bounds)
   const grouped = new Map()
   for (const { sessionId, ...set } of sets) { if (!grouped.has(sessionId)) grouped.set(sessionId, []); grouped.get(sessionId).push({ ...set }) }

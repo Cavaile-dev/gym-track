@@ -43,6 +43,10 @@ export function weekKey(date, zone) {
   local.setUTCDate(local.getUTCDate() - (local.getUTCDay() + 6) % 7)
   return local.toISOString().slice(0, 10)
 }
+export function dayKey(date, zone) {
+  const parts = localParts(new Date(date), zone)
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).toISOString().slice(0, 10)
+}
 export function monthBounds(month, zone) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null
   const [year, number] = month.split('-').map(Number)

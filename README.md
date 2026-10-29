@@ -4,6 +4,8 @@ A local-first workout logger for phones, tablets, and desktop browsers, with a c
 
 The interface keeps bottom navigation on phones and tablets, then switches to a sidebar and wider page layouts at 1024 px. Schedules and the movement library use multiple columns when space allows. Popup sizing follows the visible viewport, including mobile keyboard changes, with safe-area spacing for phones. Pinch zoom and reduced-motion preferences are supported.
 
+Exercise history is scoped to its schedule: Bench Press in Push A and Bench Press in Push B use separate previous-session values and progression logs. Existing logs are scoped using their workout's schedule ID, so no data migration is needed. Renaming a schedule preserves its history; a newly created schedule starts its own history.
+
 ## Run locally
 
 Requires Node 22.5+ (the server uses the built-in `node:sqlite` module).

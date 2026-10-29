@@ -84,7 +84,7 @@ Non-binding recommendation — any local-runnable stack meeting Section 2 is acc
 **Statistics section:**
 - Workouts this week / month
 - Total volume (weight × reps) this week, with week-over-week delta
-- Current streak (consecutive weeks with ≥ 1 workout)
+- Total days (all distinct local calendar days with at least one finished workout; multiple workouts on one day count as one day)
 - Personal records (latest PRs per exercise, e.g., "Bench Press — 80 kg × 5, new PR")
 
 ### 4.3 Page 3 — Workout Template Builder
