@@ -93,6 +93,30 @@ test('all main pages render after module extraction', async (t) => {
     assert.ok(resumed.includes('Resume'))
     assert.ok(!resumed.includes('Sessions Completed'))
   })
+  await t.test('training week exposes seven day buttons and the selected day', async () => {
+    const { WeekPlan } = await vite.ssrLoadModule('/src/features/routines/RoutinePlanner.jsx')
+    const markup = renderToString(
+      React.createElement(WeekPlan, {
+        sessions: [template],
+        compact: true,
+        selectedDay: 0,
+        onSelectDay: noop,
+      }),
+    )
+    assert.equal((markup.match(/<button /g) || []).length, 7)
+    assert.equal((markup.match(/aria-pressed="true"/g) || []).length, 1)
+    assert.match(
+      markup,
+      /is-selected[^>]*aria-pressed="true"[^>]*><span class="routine-day-name">Mon/,
+    )
+    assert.ok(markup.includes('Push A'))
+    assert.ok(markup.includes('Rest day'))
+    const editor = renderToString(
+      React.createElement(WeekPlan, { sessions: [template], onAdd: noop, onEdit: noop }),
+    )
+    assert.ok(!editor.includes('aria-pressed'))
+    assert.ok(editor.includes('Add session on Mon'))
+  })
   await t.test('account pages and dropdown render', async () => {
     const { Profile, Settings, AccountDropdown } = await vite.ssrLoadModule(
       '/src/features/account/Account.jsx',

@@ -1,6 +1,7 @@
 import { SessionChooser } from '../components/SessionChooser.jsx'
 import React, { useState } from 'react'
 import { weekdays } from '../config.js'
+import { sessionsForDay } from '../schedules.js'
 import { NavIcon, SessionMetaIcon, DashboardInsightIcon } from '../components/Icons.jsx'
 import { formatDate, formatRecordDate } from '../utils/format.js'
 import { TodaySessions, WeekPlan } from '../features/routines/RoutinePlanner.jsx'
@@ -8,12 +9,21 @@ import { ModalPresence, CloseButton } from '../components/Modal.jsx'
 
 function Dashboard({ data, user, onStart, setPage }) {
   const active = data.active
-  const today = data.today
+  const todayIndex = (new Date().getDay() + 6) % 7
+  const [selectedDay, setSelectedDay] = useState(todayIndex)
   const [showChooser, setShowChooser] = useState(false)
   const [showCompleted, setShowCompleted] = useState(false)
-  const todaySessions = data.todaySessions || []
+  const selectedSessions =
+    selectedDay === todayIndex
+      ? data.todaySessions || []
+      : sessionsForDay(data.templates, data.activeRoutineId, selectedDay)
+  const selectedSession =
+    selectedDay === todayIndex
+      ? data.today
+      : selectedSessions.find((session) => !session.completedToday) || selectedSessions[0]
+  const sessionLabel = selectedDay === todayIndex ? "TODAY'S SESSION" : "SELECTED DAY'S SESSION"
   const allSessionsCompleted =
-    todaySessions.length > 0 && todaySessions.every((session) => session.completedToday)
+    selectedSessions.length > 0 && selectedSessions.every((session) => session.completedToday)
   const routineSessions = data.templates.filter(
     (template) => template.routineId === data.activeRoutineId,
   )
@@ -47,38 +57,42 @@ function Dashboard({ data, user, onStart, setPage }) {
               Resume <span>→</span>
             </button>
           </div>
-        ) : today ? (
+        ) : selectedSession ? (
           <div className="hero-card">
             <div className="hero-top">
-              <span className="card-kicker">TODAY'S SESSION</span>
-              <span className="schedule-tag">{weekdays[(new Date().getDay() + 6) % 7]}</span>
+              <span className="card-kicker">{sessionLabel}</span>
+              <span className="schedule-tag">{weekdays[selectedDay]}</span>
             </div>
-            <h2>{today.name}</h2>
+            <h2>{selectedSession.name}</h2>
             <p className="muted session-meta">
               <span>
                 <NavIcon type="exercise" />
-                {today.exercises.length} Exercises
+                {selectedSession.exercises.length} Exercises
               </span>
-              <span aria-label={`Estimated duration: ${today.exercises.length * 8 + 12} minutes`}>
+              <span
+                aria-label={`Estimated duration: ${selectedSession.exercises.length * 8 + 12} minutes`}
+              >
                 <SessionMetaIcon type="clock" />
-                {today.exercises.length * 8 + 12} min
+                {selectedSession.exercises.length * 8 + 12} min
               </span>
               <span
                 aria-label={
-                  today.lastPerformed
-                    ? `Last performed: ${formatDate(today.lastPerformed)}`
+                  selectedSession.lastPerformed
+                    ? `Last performed: ${formatDate(selectedSession.lastPerformed)}`
                     : 'New template'
                 }
               >
                 <SessionMetaIcon type="calendar" />
-                {today.lastPerformed ? formatDate(today.lastPerformed) : 'new template'}
+                {selectedSession.lastPerformed
+                  ? formatDate(selectedSession.lastPerformed)
+                  : 'new template'}
               </span>
             </p>
             <button
               className="button primary full start-workout-button"
               onClick={() => {
                 if (allSessionsCompleted) setShowCompleted(true)
-                else onStart(today)
+                else onStart(selectedSession)
               }}
             >
               {allSessionsCompleted ? 'Sessions Completed' : 'Start workout'}{' '}
@@ -91,7 +105,12 @@ function Dashboard({ data, user, onStart, setPage }) {
               Choose another session
             </button>
             <TodaySessions
-              sessions={todaySessions}
+              sessions={selectedSessions}
+              label={
+                selectedDay === todayIndex
+                  ? "TODAY'S SESSIONS"
+                  : `${weekdays[selectedDay]} SESSIONS`
+              }
               onStart={allSessionsCompleted ? () => setShowCompleted(true) : onStart}
             />
           </div>
@@ -99,7 +118,11 @@ function Dashboard({ data, user, onStart, setPage }) {
           <div className="hero-card empty-card">
             <span className="empty-symbol">+</span>
             <h2>No session planned</h2>
-            <p className="muted">Set up a template and schedule it for today.</p>
+            <p className="muted">
+              {selectedDay === todayIndex
+                ? 'Set up a template and schedule it for today.'
+                : `No session scheduled for ${weekdays[selectedDay]}. Choose another day or pick a template.`}
+            </p>
             <button className="button primary" onClick={() => setPage('templates')}>
               Pick a template <span>→</span>
             </button>
@@ -109,7 +132,12 @@ function Dashboard({ data, user, onStart, setPage }) {
           <div className="week-board-heading">
             <h2>Your Training Week</h2>
           </div>
-          <WeekPlan sessions={routineSessions} compact />
+          <WeekPlan
+            sessions={routineSessions}
+            compact
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+          />
           <button type="button" className="week-board-link" onClick={() => setPage('templates')}>
             Manage schedules <span aria-hidden="true">↗</span>
           </button>
@@ -127,8 +155,8 @@ function Dashboard({ data, user, onStart, setPage }) {
               <CloseButton onClick={() => setShowCompleted(false)} />
             </div>
             <p className="modal-copy">
-              You've completed all of today's sessions. Take a well-earned break, recharge, and come
-              back stronger.
+              You've completed all of the selected day's sessions today. Take a well-earned break,
+              recharge, and come back stronger.
             </p>
             <button
               type="button"

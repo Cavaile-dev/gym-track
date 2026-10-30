@@ -4,16 +4,24 @@ import { api, post } from '../../requests.js'
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export function WeekPlan({ sessions, onAdd, onEdit, compact = false }) {
+export function WeekPlan({ sessions, onAdd, onEdit, compact = false, selectedDay, onSelectDay }) {
+  const Day = onSelectDay ? 'button' : 'div'
+  const SessionList = onSelectDay ? 'span' : 'div'
   const today = (new Date().getDay() + 6) % 7
   return (
     <div className={`routine-week${compact ? ' is-compact' : ''}`}>
       {days.map((day, index) => {
         const planned = sessions.filter((session) => session.scheduledDays.includes(index))
         return (
-          <div className={`routine-day${index === today ? ' is-today' : ''}`} key={day}>
+          <Day
+            className={`routine-day${index === today ? ' is-today' : ''}${onSelectDay ? ' is-selectable' : ''}${selectedDay === index ? ' is-selected' : ''}`}
+            key={day}
+            type={onSelectDay ? 'button' : undefined}
+            aria-pressed={onSelectDay ? selectedDay === index : undefined}
+            onClick={onSelectDay ? () => onSelectDay(index) : undefined}
+          >
             <span className="routine-day-name">{day}</span>
-            <div className="routine-day-sessions">
+            <SessionList className="routine-day-sessions">
               {planned.length ? (
                 planned.map((session) =>
                   onEdit ? (
@@ -33,7 +41,7 @@ export function WeekPlan({ sessions, onAdd, onEdit, compact = false }) {
               ) : (
                 <span className="routine-rest">Rest day</span>
               )}
-            </div>
+            </SessionList>
             {onAdd && (
               <button
                 type="button"
@@ -44,7 +52,7 @@ export function WeekPlan({ sessions, onAdd, onEdit, compact = false }) {
                 +
               </button>
             )}
-          </div>
+          </Day>
         )
       })}
     </div>
@@ -314,11 +322,11 @@ export function RoutineManager({ data, selectedId, onSelect, setData, Modal, Clo
   )
 }
 
-export function TodaySessions({ sessions, onStart }) {
+export function TodaySessions({ sessions, onStart, label = "TODAY'S SESSIONS" }) {
   if (sessions.length < 2) return null
   return (
     <div className="today-sessions">
-      <p className="eyebrow">TODAY'S SESSIONS</p>
+      <p className="eyebrow">{label}</p>
       {sessions.map((session) => (
         <button type="button" key={session.id} onClick={() => onStart(session)}>
           <span>

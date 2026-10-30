@@ -236,6 +236,29 @@
   background: rgba(var(--neon-rgb), 0.08);
   box-shadow: 0 0 12px var(--neon-soft);
 }
+.routine-week.is-compact .routine-day.is-selectable {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.routine-week.is-compact .routine-day.is-selectable:hover {
+  background: rgba(var(--neon-rgb), 0.04);
+}
+.routine-week.is-compact .routine-day.is-selected {
+  background: rgba(var(--neon-rgb), 0.08);
+}
+.routine-week.is-compact .routine-day.is-selected .routine-day-name {
+  color: var(--lime);
+  border-color: rgba(var(--neon-rgb), 0.65);
+  background: rgba(var(--neon-rgb), 0.12);
+}
+.routine-week.is-compact .routine-day.is-selectable:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
 .routine-session-name {
   font-size: var(--text-small);
   font-weight: 600;

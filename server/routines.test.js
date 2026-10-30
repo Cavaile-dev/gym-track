@@ -166,6 +166,47 @@ test('weekly routines preserve existing training data and support several sessio
       assert.equal((await request('/templates/222/schedule', 'POST', {})).status, 400)
     },
   )
+  await t.test('a session selected from another weekday is logged and counted today', async () => {
+    const selectedDay = (day + 3) % 7
+    const created = await request(
+      '/templates',
+      'POST',
+      plan('Other day workout', originalRoutine, [selectedDay]),
+    )
+    assert.equal(created.status, 200)
+    const templateId = created.data.id
+    const before = (await request('/bootstrap')).data
+    assert.ok(!before.todaySessions.some((session) => session.id === templateId))
+    const started = await request('/workouts', 'POST', { templateId })
+    assert.equal(started.status, 200)
+    const workout = started.data
+    assert.equal(workout.template.id, templateId)
+    assert.equal(workout.startedAt.slice(0, 10), new Date().toISOString().slice(0, 10))
+    assert.equal(
+      (
+        await request(`/workouts/${workout.id}/sets`, 'POST', {
+          exerciseId: 1000,
+          weight: 30,
+          reps: 10,
+          requestId: randomUUID(),
+        })
+      ).status,
+      200,
+    )
+    assert.equal((await request(`/workouts/${workout.id}/finish`, 'POST', {})).status, 200)
+    const after = (await request('/bootstrap')).data
+    assert.equal(after.stats.workoutsWeek, before.stats.workoutsWeek + 1)
+    assert.equal(after.stats.workoutsMonth, before.stats.workoutsMonth + 1)
+    const completed = after.templates.find((session) => session.id === templateId)
+    assert.equal(completed.lastPerformed.slice(0, 10), new Date().toISOString().slice(0, 10))
+    assert.deepEqual(completed.scheduledDays, [selectedDay])
+    const history = (await request(`/history?month=${new Date().toISOString().slice(0, 7)}`)).data
+    const entry = history.sessions.find((session) => session.id === workout.id)
+    assert.equal(entry.templateId, templateId)
+    assert.equal(entry.finishedAt.slice(0, 10), new Date().toISOString().slice(0, 10))
+    // Remove this fixture so later tests retain their original routine contents.
+    assert.equal((await request(`/templates/${templateId}`, 'DELETE')).status, 200)
+  })
   let secondRoutine
   await t.test(
     'active routine controls dashboard without losing the other weekly plan',

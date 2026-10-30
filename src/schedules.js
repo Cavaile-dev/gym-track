@@ -11,11 +11,18 @@ export function withUpdatedTemplates(data, templates) {
   templates = [...templates].sort((a, b) => a.id - b.id)
   const today = new Date()
   const day = (today.getDay() + 6) % 7
-  const todaySessions = templates
-    .filter(
-      (template) =>
-        template.routineId === data.activeRoutineId && template.scheduledDays.includes(day),
-    )
+  const todaySessions = sessionsForDay(templates, data.activeRoutineId, day, today)
+  return {
+    ...data,
+    templates,
+    todaySessions,
+    today: todaySessions.find((template) => !template.completedToday) || todaySessions[0] || null,
+  }
+}
+
+export function sessionsForDay(templates, routineId, day, today = new Date()) {
+  return templates
+    .filter((template) => template.routineId === routineId && template.scheduledDays.includes(day))
     .map((template) => ({
       ...template,
       completedToday: Boolean(
@@ -23,10 +30,4 @@ export function withUpdatedTemplates(data, templates) {
         new Date(template.lastPerformed).toDateString() === today.toDateString(),
       ),
     }))
-  return {
-    ...data,
-    templates,
-    todaySessions,
-    today: todaySessions.find((template) => !template.completedToday) || todaySessions[0] || null,
-  }
 }
