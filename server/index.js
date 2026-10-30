@@ -21,6 +21,19 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS workout_sessions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, template_id INTEGER NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL DEFAULT 'active', FOREIGN KEY(user_id) REFERENCES users(id));
   CREATE TABLE IF NOT EXISTS set_logs (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, exercise_id INTEGER NOT NULL, set_number INTEGER NOT NULL, weight REAL NOT NULL, reps INTEGER NOT NULL, logged_at TEXT NOT NULL, FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE);
 `)
+db.exec(`CREATE TABLE IF NOT EXISTS routines (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), name TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_routines_active ON routines(user_id) WHERE is_active=1;`)
+if (!db.prepare('PRAGMA table_info(templates)').all().some((column) => column.name === 'routine_id')) db.exec('ALTER TABLE templates ADD COLUMN routine_id INTEGER REFERENCES routines(id)')
+// Keep template IDs intact so existing workout history and progression stay linked.
+db.exec('BEGIN')
+try {
+  for (const user of db.prepare('SELECT id FROM users').all()) {
+    let routine = db.prepare('SELECT id FROM routines WHERE user_id=? ORDER BY is_active DESC,id LIMIT 1').get(user.id)
+    if (!routine) routine = { id: db.prepare('INSERT INTO routines (user_id,name,is_active,created_at) VALUES (?,?,1,?)').run(user.id, 'My Training Week', new Date().toISOString()).lastInsertRowid }
+    db.prepare('UPDATE templates SET routine_id=? WHERE user_id=? AND routine_id IS NULL').run(routine.id, user.id)
+  }
+  db.exec('COMMIT')
+} catch (error) { db.exec('ROLLBACK'); throw error }
 if (!db.prepare('PRAGMA table_info(exercises)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE exercises ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
 if (!db.prepare('PRAGMA table_info(templates)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE templates ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
 
@@ -181,7 +194,7 @@ function templateShape(template) {
   const exercises = all(`SELECT e.id, e.name, e.muscle_group AS muscleGroup, te.target_sets AS targetSets, te.position
     FROM template_exercises te JOIN exercises e ON e.id=te.exercise_id WHERE te.template_id=? ORDER BY te.position`, template.id)
   const last = get("SELECT MAX(finished_at) AS date FROM workout_sessions WHERE template_id=? AND user_id=? AND status='finished'", template.id, template.user_id)
-  return { id: template.id, name: template.name, scheduledDays: parseDays(template.scheduled_days), exercises, lastPerformed: last?.date || null }
+  return { id: template.id, routineId: template.routine_id, name: template.name, scheduledDays: parseDays(template.scheduled_days), exercises, lastPerformed: last?.date || null }
 }
 function activeShape(session) {
   if (!session) return null
@@ -219,11 +232,28 @@ function stats(userId, zone) {
     records: records.map((record) => ({ ...record })), totalDays,
   }
 }
+function ensureRoutine(userId) {
+  let routine = get('SELECT * FROM routines WHERE user_id=? ORDER BY is_active DESC,id LIMIT 1', userId)
+  if (!routine) {
+    const result = run('INSERT INTO routines (user_id,name,is_active,created_at) VALUES (?,?,1,?)', userId, 'My Training Week', now())
+    routine = get('SELECT * FROM routines WHERE id=?', result.lastInsertRowid)
+  }
+  run('UPDATE templates SET routine_id=? WHERE user_id=? AND routine_id IS NULL', routine.id, userId)
+  return routine
+}
+function ownRoutine(routineId, userId) {
+  const routine = get('SELECT * FROM routines WHERE id=? AND user_id=?', routineId, userId)
+  if (!routine) fail(404, 'Routine not found.')
+  return routine
+}
 function bootstrap(userId, zone) {
-  const templates = all('SELECT * FROM templates WHERE user_id=? AND archived=0 ORDER BY name', userId).map(templateShape)
+  const activeRoutine = ensureRoutine(userId)
+  const routines = all('SELECT id,name,is_active AS isActive FROM routines WHERE user_id=? ORDER BY id', userId)
+  const templates = all('SELECT * FROM templates WHERE user_id=? AND archived=0 ORDER BY id', userId).map(templateShape)
   const exercises = all('SELECT id, name, muscle_group AS muscleGroup, is_custom AS isCustom FROM exercises WHERE archived=0 AND (is_custom=0 OR created_by=?) ORDER BY name', userId)
   const active = get("SELECT * FROM workout_sessions WHERE user_id=? AND status='active' ORDER BY started_at DESC LIMIT 1", userId)
-  return { templates, exercises, today: templates.find((template) => template.scheduledDays.includes(dateContext(zone).dayIndex)) || null, active: activeShape(active), stats: stats(userId, zone) }
+  const todaySessions = templates.filter((template) => template.routineId === activeRoutine.id && template.scheduledDays.includes(dateContext(zone).dayIndex)).map((template) => ({ ...template, completedToday: Boolean(template.lastPerformed && dayKey(template.lastPerformed, zone) === dayKey(new Date(), zone)) }))
+  return { routines, activeRoutineId: activeRoutine.id, templates, exercises, todaySessions, today: todaySessions.find((template) => !template.completedToday) || todaySessions[0] || null, active: activeShape(active), stats: stats(userId, zone) }
 }
 
 function validateTemplate(userId, body, existingTemplateId = null) {
@@ -331,17 +361,49 @@ app.get('/api/exercises/:id/history', (req, res) => {
   res.json({ exercise: exercise.name, templateId, templateName: template.name, sessions })
 })
 
+// Weekly routines contain workout session templates.
+app.post('/api/routines', (req, res) => {
+  ensureRoutine(req.user.id)
+  if (get('SELECT COUNT(*) AS count FROM routines WHERE user_id=?', req.user.id).count >= 20) fail(409, 'You can save up to 20 routines.')
+  const result = run('INSERT INTO routines (user_id,name,is_active,created_at) VALUES (?,?,0,?)', req.user.id, text(req.body?.name, 'Routine name', 80), now())
+  res.json({ id: Number(result.lastInsertRowid) })
+})
+app.put('/api/routines/:id', (req, res) => {
+  const routine = ownRoutine(id(req.params.id), req.user.id)
+  run('UPDATE routines SET name=? WHERE id=?', text(req.body?.name, 'Routine name', 80), routine.id)
+  res.json({ ok: true })
+})
+app.post('/api/routines/:id/activate', (req, res) => {
+  const routine = ownRoutine(id(req.params.id), req.user.id)
+  transaction(() => { run('UPDATE routines SET is_active=0 WHERE user_id=?', req.user.id); run('UPDATE routines SET is_active=1 WHERE id=?', routine.id) })
+  res.json({ ok: true })
+})
+app.delete('/api/routines/:id', (req, res) => {
+  const routine = ownRoutine(id(req.params.id), req.user.id)
+  if (get('SELECT COUNT(*) AS count FROM routines WHERE user_id=?', req.user.id).count <= 1) fail(409, 'Keep at least one routine.')
+  if (get("SELECT ws.id FROM workout_sessions ws JOIN templates t ON t.id=ws.template_id WHERE t.routine_id=? AND ws.status='active'", routine.id)) fail(409, 'Finish or leave the active workout before deleting this routine.')
+  transaction(() => {
+    run("UPDATE templates SET archived=1,scheduled_days='[]' WHERE routine_id=?", routine.id)
+    run('UPDATE templates SET routine_id=(SELECT id FROM routines WHERE user_id=? AND id<>? ORDER BY id LIMIT 1) WHERE routine_id=?', req.user.id, routine.id, routine.id)
+    run('DELETE FROM routines WHERE id=?', routine.id)
+    if (routine.is_active) run('UPDATE routines SET is_active=1 WHERE id=(SELECT id FROM routines WHERE user_id=? ORDER BY id LIMIT 1)', req.user.id)
+  })
+  res.json({ ok: true })
+})
+
 // Schedules (templates)
 function saveTemplate(req, res, existing) {
   if (!existing && get('SELECT COUNT(*) AS count FROM templates WHERE user_id=? AND archived=0', req.user.id).count >= 100) fail(409, 'You can save up to 100 schedules.')
   const payload = validateTemplate(req.user.id, req.body ?? {}, existing?.id ?? null)
+  const routineId = req.body?.routineId === undefined ? (existing?.routine_id ?? ensureRoutine(req.user.id).id) : id(req.body.routineId)
+  ownRoutine(routineId, req.user.id)
   const templateId = transaction(() => {
     let target = existing?.id
     if (target) {
-      run('UPDATE templates SET name=?, scheduled_days=? WHERE id=? AND user_id=?', payload.name, JSON.stringify(payload.days), target, req.user.id)
+      run('UPDATE templates SET name=?, scheduled_days=?, routine_id=? WHERE id=? AND user_id=?', payload.name, JSON.stringify(payload.days), routineId, target, req.user.id)
       run('DELETE FROM template_exercises WHERE template_id=?', target)
     } else {
-      target = run('INSERT INTO templates (user_id,name,scheduled_days,created_at) VALUES (?,?,?,?)', req.user.id, payload.name, JSON.stringify(payload.days), now()).lastInsertRowid
+      target = run('INSERT INTO templates (user_id,name,scheduled_days,created_at,routine_id) VALUES (?,?,?,?,?)', req.user.id, payload.name, JSON.stringify(payload.days), now(), routineId).lastInsertRowid
     }
     payload.exercises.forEach((exercise, position) => run('INSERT INTO template_exercises (template_id,exercise_id,position,target_sets) VALUES (?,?,?,?)', target, exercise.id, position, exercise.targetSets))
     return target
@@ -350,6 +412,16 @@ function saveTemplate(req, res, existing) {
 }
 app.post('/api/templates', (req, res) => saveTemplate(req, res, null))
 app.put('/api/templates/:id', (req, res) => saveTemplate(req, res, editableTemplate(id(req.params.id), req.user.id)))
+// Assign an existing session without rebuilding its exercises or changing workout data.
+app.post('/api/templates/:id/schedule', (req, res) => {
+  const templateId = id(req.params.id)
+  const day = number(req.body?.day, 'Day', 0, 6)
+  const template = get('SELECT * FROM templates WHERE id=? AND user_id=? AND archived=0', templateId, req.user.id)
+  if (!template) fail(404, 'Session not found.')
+  const days = [...new Set([...parseDays(template.scheduled_days), day])].sort((a, b) => a - b)
+  run('UPDATE templates SET scheduled_days=? WHERE id=? AND user_id=?', JSON.stringify(days), templateId, req.user.id)
+  res.json(templateShape(get('SELECT * FROM templates WHERE id=? AND user_id=?', templateId, req.user.id)))
+})
 app.delete('/api/templates/:id', (req, res) => {
   const template = editableTemplate(id(req.params.id), req.user.id)
   run("UPDATE templates SET archived=1, scheduled_days='[]' WHERE id=? AND user_id=?", template.id, req.user.id)

@@ -195,3 +195,14 @@ For each set, the screen shows:
 - Progress charts (volume, estimated 1RM per exercise).
 - Plate math helper ("load 60 kg → 20 + 20 + ... per side").
 - Export data (CSV/JSON).
+
+
+### Weekly routines
+- A routine is a named weekly program. A session (stored as a template) is a collection of exercises assigned to zero or more weekdays; each day can contain several sessions. Empty days are rest days.
+- Each account has one active routine for the dashboard, and may keep up to 20 routines. Existing schedules migrate into “My Training Week” with unchanged template IDs, exercise links and history.
+- The Schedule page supports creating, renaming, activating and deleting routines, a Monday–Sunday planner, and adding/editing/deleting sessions. A day's plus button opens an existing-session picker for that routine, excluding sessions already assigned to that day. Selecting a session adds the day without copying the session or changing its other days. New sessions are created with Add session.
+- The dashboard shows every session scheduled today in the active routine and suggests the first session not completed today. Completion is determined in the user's time zone. The session picker and training week show only the active routine.
+- Removing a routine archives its session templates and preserves all workout history. At least one routine must remain. Routine deletion is blocked when it contains an active workout.
+- API additions: POST /api/routines, PUT/DELETE /api/routines/:id, POST /api/routines/:id/activate. Templates include routineId; bootstrap adds routines, activeRoutineId and todaySessions, while retaining today for the suggested session.
+
+- POST /api/templates/:id/schedule with `{ day: 0..6 }` adds a weekday to an owned, non-archived session. Repeated assignment is idempotent, and exercises/history remain unchanged. Day assignment is allowed during an active workout because it changes scheduling only.

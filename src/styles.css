@@ -193,7 +193,9 @@ label { display: grid; gap: 8px; color: #dce4de; font-size: var(--text-small); f
 .template-list { display: grid; gap: 16px; margin-top: 14px; }
 .template-card { min-width: 0; padding: 20px 20px 0; border: 1px solid #303b33; border-radius: 18px; background: linear-gradient(145deg, #202821, #181f1b 65%); box-shadow: 0 6px 20px #00000012; }
 .template-card.is-today { border-color: #637744; background: radial-gradient(ellipse at 100% 0, #c9f2640c, transparent 65%), linear-gradient(145deg, #222c22, #181f1b 65%); }
-.template-card-head { min-height: 23px; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 13px; }
+.template-card-head { min-height: 23px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.template-card-head h2 { min-width: 0; flex: 1; }
+.template-card-head .template-today { flex-shrink: 0; }
 .template-number { color: #9ba99e; font: 500 var(--text-caption)/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; }
 .template-today { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 20px; background: #c9f26412; color: var(--lime); font-size: var(--text-caption); font-weight: 600; }
 .template-today i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
