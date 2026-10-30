@@ -94,6 +94,7 @@ Non-binding recommendation — any local-runnable stack meeting Section 2 is acc
 - Create / edit / delete templates.
 - Template = name, list of exercises, each with default target sets (e.g., 4 sets).
 - Exercise picker: searchable list of built-in exercises (Bench Press, Squat, Deadlift, etc.) + custom exercise creation.
+- Removing a custom movement archives it: hide it from the library and new exercise selections, preserve existing schedules and history, and count only active custom movements toward the 200-movement limit. Existing schedules may retain their archived exercises when edited.
 - **Scheduling:** assign template to day(s) of the week (e.g., "Push Day — Mon/Thu", "Leg Day — Wed"). This drives the Dashboard auto-pick.
 - Reorder exercises via drag handle.
 
@@ -154,7 +155,7 @@ For each set, the screen shows:
 | Entity | Key fields |
 |---|---|
 | User | id, username, password_hash, created_at |
-| Exercise | id, name, muscle_group, is_custom, created_by |
+| Exercise | id, name, muscle_group, is_custom, created_by, archived |
 | Template | id, user_id, name, scheduled_days[] |
 | TemplateExercise | template_id, exercise_id, position, target_sets |
 | WorkoutSession | id, user_id, template_id, started_at, finished_at, status |

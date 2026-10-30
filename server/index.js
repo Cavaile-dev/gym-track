@@ -15,12 +15,13 @@ db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT, password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id));
-  CREATE TABLE IF NOT EXISTS exercises (id INTEGER PRIMARY KEY, name TEXT NOT NULL, muscle_group TEXT NOT NULL, is_custom INTEGER DEFAULT 0, created_by INTEGER);
+  CREATE TABLE IF NOT EXISTS exercises (id INTEGER PRIMARY KEY, name TEXT NOT NULL, muscle_group TEXT NOT NULL, is_custom INTEGER DEFAULT 0, created_by INTEGER, archived INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL, scheduled_days TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id));
   CREATE TABLE IF NOT EXISTS template_exercises (template_id INTEGER NOT NULL, exercise_id INTEGER NOT NULL, position INTEGER NOT NULL, target_sets INTEGER NOT NULL DEFAULT 3, PRIMARY KEY(template_id, exercise_id), FOREIGN KEY(template_id) REFERENCES templates(id) ON DELETE CASCADE, FOREIGN KEY(exercise_id) REFERENCES exercises(id));
   CREATE TABLE IF NOT EXISTS workout_sessions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, template_id INTEGER NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL DEFAULT 'active', FOREIGN KEY(user_id) REFERENCES users(id));
   CREATE TABLE IF NOT EXISTS set_logs (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, exercise_id INTEGER NOT NULL, set_number INTEGER NOT NULL, weight REAL NOT NULL, reps INTEGER NOT NULL, logged_at TEXT NOT NULL, FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE);
 `)
+if (!db.prepare('PRAGMA table_info(exercises)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE exercises ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
 if (!db.prepare('PRAGMA table_info(templates)').all().some((column) => column.name === 'archived')) db.exec('ALTER TABLE templates ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
 
 db.exec(`
@@ -89,7 +90,7 @@ const builtInExercises = [
 ]
 
 const findBuiltInExercise = db.prepare('SELECT id, muscle_group FROM exercises WHERE name = ? COLLATE NOCASE AND is_custom = 0 LIMIT 1')
-const findMatchingCustomExercise = db.prepare('SELECT id FROM exercises WHERE name = ? COLLATE NOCASE AND is_custom = 1 LIMIT 1')
+const findMatchingCustomExercise = db.prepare('SELECT id FROM exercises WHERE name = ? COLLATE NOCASE AND is_custom = 1 AND archived = 0 LIMIT 1')
 const promoteToBuiltIn = db.prepare('UPDATE exercises SET name = ?, muscle_group = ?, is_custom = 0, created_by = NULL WHERE id = ?')
 const updateBuiltInGroup = db.prepare('UPDATE exercises SET muscle_group = ? WHERE id = ?')
 const insertBuiltIn = db.prepare('INSERT INTO exercises (name, muscle_group, is_custom) VALUES (?, ?, 0)')
@@ -220,19 +221,19 @@ function stats(userId, zone) {
 }
 function bootstrap(userId, zone) {
   const templates = all('SELECT * FROM templates WHERE user_id=? AND archived=0 ORDER BY name', userId).map(templateShape)
-  const exercises = all('SELECT id, name, muscle_group AS muscleGroup, is_custom AS isCustom FROM exercises WHERE is_custom=0 OR created_by=? ORDER BY name', userId)
+  const exercises = all('SELECT id, name, muscle_group AS muscleGroup, is_custom AS isCustom FROM exercises WHERE archived=0 AND (is_custom=0 OR created_by=?) ORDER BY name', userId)
   const active = get("SELECT * FROM workout_sessions WHERE user_id=? AND status='active' ORDER BY started_at DESC LIMIT 1", userId)
   return { templates, exercises, today: templates.find((template) => template.scheduledDays.includes(dateContext(zone).dayIndex)) || null, active: activeShape(active), stats: stats(userId, zone) }
 }
 
-function validateTemplate(userId, body) {
+function validateTemplate(userId, body, existingTemplateId = null) {
   const name = text(body.name, 'Schedule name', 80)
   if (!Array.isArray(body.scheduledDays) || body.scheduledDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) fail(400, 'Choose valid scheduled days.')
   const days = [...new Set(body.scheduledDays)].sort()
   if (!Array.isArray(body.exercises) || body.exercises.length < 1 || body.exercises.length > 30) fail(400, 'Choose 1â€“30 exercises.')
   const exercises = body.exercises.map((exercise) => ({ id: id(exercise?.id), targetSets: number(exercise?.targetSets, 'Target sets', 1, 30) }))
   if (new Set(exercises.map((exercise) => exercise.id)).size !== exercises.length) fail(400, 'An exercise can only appear once in a schedule.')
-  const available = all(`SELECT id FROM exercises WHERE id IN (${exercises.map(() => '?').join(',')}) AND (is_custom=0 OR created_by=?)`, ...exercises.map((exercise) => exercise.id), userId)
+  const available = all(`SELECT id FROM exercises WHERE id IN (${exercises.map(() => '?').join(',')}) AND (is_custom=0 OR created_by=?) AND (archived=0 OR id IN (SELECT exercise_id FROM template_exercises WHERE template_id=?))`, ...exercises.map((exercise) => exercise.id), userId, existingTemplateId)
   if (available.length !== exercises.length) fail(400, 'One or more exercises are unavailable.')
   return { name, days, exercises }
 }
@@ -308,7 +309,7 @@ app.post('/api/exercises', (req, res) => {
   const name = text(body.name, 'Exercise name', 100)
   const group = body.muscleGroup || 'Other'
   if (!muscleGroups.has(group)) fail(400, 'Choose a valid muscle group.')
-  if (get('SELECT COUNT(*) AS count FROM exercises WHERE created_by=?', req.user.id).count >= 200) fail(409, 'You can save up to 200 custom exercises.')
+  if (get('SELECT COUNT(*) AS count FROM exercises WHERE created_by=? AND is_custom=1 AND archived=0', req.user.id).count >= 200) fail(409, 'You can save up to 200 active custom exercises.')
   const result = run('INSERT INTO exercises (name,muscle_group,is_custom,created_by) VALUES (?,?,1,?)', name, group, req.user.id)
   res.json({ id: result.lastInsertRowid, name, muscleGroup: group, isCustom: 1 })
 })
@@ -316,9 +317,7 @@ app.delete('/api/exercises/:id', (req, res) => {
   const exerciseId = id(req.params.id)
   const exercise = get('SELECT id FROM exercises WHERE id=? AND created_by=? AND is_custom=1', exerciseId, req.user.id)
   if (!exercise) fail(404, 'Custom exercise not found.')
-  const used = get('SELECT (SELECT COUNT(*) FROM template_exercises WHERE exercise_id=?) + (SELECT COUNT(*) FROM set_logs WHERE exercise_id=?) AS count', exerciseId, exerciseId)
-  if (used.count) fail(409, 'This exercise is already used in a schedule or workout history.')
-  run('DELETE FROM exercises WHERE id=? AND created_by=?', exerciseId, req.user.id)
+  run('UPDATE exercises SET archived=1 WHERE id=? AND created_by=? AND is_custom=1', exerciseId, req.user.id)
   res.json({ ok: true })
 })
 app.get('/api/exercises/:id/history', (req, res) => {
@@ -335,7 +334,7 @@ app.get('/api/exercises/:id/history', (req, res) => {
 // Schedules (templates)
 function saveTemplate(req, res, existing) {
   if (!existing && get('SELECT COUNT(*) AS count FROM templates WHERE user_id=? AND archived=0', req.user.id).count >= 100) fail(409, 'You can save up to 100 schedules.')
-  const payload = validateTemplate(req.user.id, req.body ?? {})
+  const payload = validateTemplate(req.user.id, req.body ?? {}, existing?.id ?? null)
   const templateId = transaction(() => {
     let target = existing?.id
     if (target) {
