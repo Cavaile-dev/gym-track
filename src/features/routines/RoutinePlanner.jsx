@@ -325,7 +325,7 @@ export function TodaySessions({ sessions, onStart }) {
             <strong>{session.name}</strong>
             <small>
               {session.completedToday
-                ? 'Completed today · Train again'
+                ? 'Completed today'
                 : `${session.exercises.length} ${session.exercises.length === 1 ? 'exercise' : 'exercises'}`}
             </small>
           </span>

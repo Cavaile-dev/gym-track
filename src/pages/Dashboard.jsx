@@ -4,12 +4,16 @@ import { weekdays } from '../config.js'
 import { NavIcon, SessionMetaIcon, DashboardInsightIcon } from '../components/Icons.jsx'
 import { formatDate, formatRecordDate } from '../utils/format.js'
 import { TodaySessions, WeekPlan } from '../features/routines/RoutinePlanner.jsx'
-import { ModalPresence } from '../components/Modal.jsx'
+import { ModalPresence, CloseButton } from '../components/Modal.jsx'
 
 function Dashboard({ data, user, onStart, setPage }) {
   const active = data.active
   const today = data.today
   const [showChooser, setShowChooser] = useState(false)
+  const [showCompleted, setShowCompleted] = useState(false)
+  const todaySessions = data.todaySessions || []
+  const allSessionsCompleted =
+    todaySessions.length > 0 && todaySessions.every((session) => session.completedToday)
   const routineSessions = data.templates.filter(
     (template) => template.routineId === data.activeRoutineId,
   )
@@ -72,9 +76,13 @@ function Dashboard({ data, user, onStart, setPage }) {
             </p>
             <button
               className="button primary full start-workout-button"
-              onClick={() => onStart(today)}
+              onClick={() => {
+                if (allSessionsCompleted) setShowCompleted(true)
+                else onStart(today)
+              }}
             >
-              {today.completedToday ? 'Train again' : 'Start workout'} <span>→</span>
+              {allSessionsCompleted ? 'Sessions Completed' : 'Start workout'}{' '}
+              <span aria-hidden="true">{allSessionsCompleted ? '✓' : '→'}</span>
             </button>
             <button
               className="button secondary full choose-template-button"
@@ -82,7 +90,10 @@ function Dashboard({ data, user, onStart, setPage }) {
             >
               Choose another session
             </button>
-            <TodaySessions sessions={data.todaySessions || []} onStart={onStart} />
+            <TodaySessions
+              sessions={todaySessions}
+              onStart={allSessionsCompleted ? () => setShowCompleted(true) : onStart}
+            />
           </div>
         ) : (
           <div className="hero-card empty-card">
@@ -105,6 +116,30 @@ function Dashboard({ data, user, onStart, setPage }) {
         </aside>
       </div>
       <DashboardInsights stats={data.stats} />
+      <ModalPresence open={showCompleted} label="Sessions completed">
+        <div className="modal-backdrop">
+          <div className="modal sheet small-sheet">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">RECOVERY TIME</p>
+                <h2>Well done. You earned this rest.</h2>
+              </div>
+              <CloseButton onClick={() => setShowCompleted(false)} />
+            </div>
+            <p className="modal-copy">
+              You've completed all of today's sessions. Take a well-earned break, recharge, and come
+              back stronger.
+            </p>
+            <button
+              type="button"
+              className="button primary full"
+              onClick={() => setShowCompleted(false)}
+            >
+              Time to recover
+            </button>
+          </div>
+        </div>
+      </ModalPresence>
       <ModalPresence open={showChooser} label="Choose a schedule">
         <SessionChooser
           templates={routineSessions}

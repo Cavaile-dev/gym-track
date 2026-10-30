@@ -55,6 +55,44 @@ test('all main pages render after module extraction', async (t) => {
       assert.ok(markup.includes(expected))
     })
   }
+  await t.test('dashboard celebrates only when every scheduled session is completed', async () => {
+    const { Dashboard } = await vite.ssrLoadModule('/src/pages/Dashboard.jsx')
+    const completed = { ...template, completedToday: true }
+    const remaining = { ...template, id: 2, name: 'Pull B', completedToday: false }
+    const cases = [
+      { sessions: [completed], today: completed, expected: 'Sessions Completed' },
+      {
+        sessions: [completed, { ...remaining, completedToday: true }],
+        today: completed,
+        expected: 'Sessions Completed',
+      },
+      { sessions: [completed, remaining], today: remaining, expected: 'Start workout' },
+      { sessions: [], today: null, expected: 'No session planned' },
+    ]
+    for (const { sessions, today, expected } of cases) {
+      const markup = renderToString(
+        React.createElement(Dashboard, {
+          data: { ...data, todaySessions: sessions, today },
+          user,
+          onStart: noop,
+          setPage: noop,
+        }),
+      )
+      assert.ok(markup.includes(expected), expected)
+      assert.ok(!markup.includes('Train again'))
+      if (expected !== 'Sessions Completed') assert.ok(!markup.includes('Sessions Completed'))
+    }
+    const resumed = renderToString(
+      React.createElement(Dashboard, {
+        data: { ...data, today: completed, todaySessions: [completed], active: { template } },
+        user,
+        onStart: noop,
+        setPage: noop,
+      }),
+    )
+    assert.ok(resumed.includes('Resume'))
+    assert.ok(!resumed.includes('Sessions Completed'))
+  })
   await t.test('account pages and dropdown render', async () => {
     const { Profile, Settings, AccountDropdown } = await vite.ssrLoadModule(
       '/src/features/account/Account.jsx',
