@@ -1,7 +1,14 @@
 export async function api(url, options = {}) {
   let response
   try {
-    response = await fetch(`/api${url}`, { ...options, headers: { 'Content-Type': 'application/json', 'X-Time-Zone': Intl.DateTimeFormat().resolvedOptions().timeZone, ...options.headers } })
+    response = await fetch(`/api${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Time-Zone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...options.headers,
+      },
+    })
   } catch {
     throw new Error('Connection lost. Check your connection and try again.')
   }
@@ -22,7 +29,7 @@ function createRequestId() {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   bytes[6] = (bytes[6] & 0x0f) | 0x40
   bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
@@ -31,19 +38,32 @@ export function createSetWriter(send, makeId = createRequestId) {
   let pending = null
   let flight = null
   return {
-    get pending() { return pending },
+    get pending() {
+      return pending
+    },
     submit(payload) {
       if (flight) return flight
-      const signature = JSON.stringify([payload.exerciseId, Number(payload.weight), Number(payload.reps)])
-      if (pending && pending.signature !== signature) return Promise.reject(new Error('Retry the pending set before changing its values.'))
+      const signature = JSON.stringify([
+        payload.exerciseId,
+        Number(payload.weight),
+        Number(payload.reps),
+      ])
+      if (pending && pending.signature !== signature)
+        return Promise.reject(new Error('Retry the pending set before changing its values.'))
       if (!pending) pending = { signature, body: { ...payload, requestId: makeId() } }
-      flight = Promise.resolve().then(() => send(pending.body)).then(result => {
-        pending = null
-        return result
-      }).catch(error => {
-        if (error.status >= 400 && error.status < 500) pending = null
-        throw error
-      }).finally(() => { flight = null })
+      flight = Promise.resolve()
+        .then(() => send(pending.body))
+        .then((result) => {
+          pending = null
+          return result
+        })
+        .catch((error) => {
+          if (error.status >= 400 && error.status < 500) pending = null
+          throw error
+        })
+        .finally(() => {
+          flight = null
+        })
       return flight
     },
   }

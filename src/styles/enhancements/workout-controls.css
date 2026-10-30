@@ -1,0 +1,128 @@
+/* Workout controls */
+.leave-workout-button,
+.edit-last-set-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #1a201d;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.leave-workout-button span,
+.edit-last-set-button span {
+  margin-left: 0;
+  vertical-align: baseline;
+  font-size: var(--text-small);
+}
+.leave-workout-button:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+.weight-input {
+  position: relative;
+  min-width: 0;
+}
+.weight-input input {
+  padding-right: 48px;
+}
+.input-row .weight-input .input-unit {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  color: var(--muted);
+  font:
+    500 var(--text-small) 'DM Mono',
+    monospace;
+  pointer-events: none;
+}
+.input-row input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.input-row input[type='number']::-webkit-inner-spin-button,
+.input-row input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.quick-adjust button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 10px;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.input-row .quick-adjust button span {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+.quick-adjust .quick-adjust-minus {
+  color: #ff9690;
+  border-color: #683b39;
+  background: #30211f;
+}
+.quick-adjust .quick-adjust-plus {
+  color: #a4ebac;
+  border-color: #365d40;
+  background: #1b3023;
+}
+.quick-adjust .quick-adjust-minus:active {
+  color: #ffb4af;
+  border-color: var(--red);
+  background: #492925;
+}
+.quick-adjust .quick-adjust-plus:active {
+  color: #c2ffcb;
+  border-color: #84e398;
+  background: #25472f;
+}
+.leave-workout-sheet .eyebrow {
+  color: var(--red);
+}
+.leave-workout-sheet .modal-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.button.danger {
+  color: #ffe8e5;
+  background: #813c37;
+  border: 1px solid #b65b52;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .leave-workout-button:not(:disabled):hover {
+    color: #ffaaa3;
+    border-color: var(--red);
+    background: #3c2422;
+    box-shadow: 0 0 18px #ff756d1f;
+  }
+  .quick-adjust .quick-adjust-minus:not(:disabled):hover {
+    border-color: var(--red);
+    background: #492925;
+  }
+  .quick-adjust .quick-adjust-plus:not(:disabled):hover {
+    border-color: #84e398;
+    background: #25472f;
+  }
+  .button.danger:not(:disabled):hover {
+    background: #a3483f;
+    border-color: #ff968a;
+    box-shadow: 0 0 20px #ff756d26;
+  }
+}

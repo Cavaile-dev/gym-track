@@ -10,15 +10,15 @@ function withoutRandomUUID(t) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
-    value: { getRandomValues: array => webcrypto.getRandomValues(array) },
+    value: { getRandomValues: (array) => webcrypto.getRandomValues(array) },
   })
   t.after(() => Object.defineProperty(globalThis, 'crypto', original))
 }
 
-test('logging the first set works when crypto.randomUUID is unavailable', async t => {
+test('logging the first set works when crypto.randomUUID is unavailable', async (t) => {
   withoutRandomUUID(t)
   const sent = []
-  const writer = createSetWriter(async body => {
+  const writer = createSetWriter(async (body) => {
     sent.push(body)
     return { logs: [body] }
   })
@@ -31,10 +31,10 @@ test('logging the first set works when crypto.randomUUID is unavailable', async 
   assert.equal(writer.pending, null)
 })
 
-test('retrying a set keeps its ID without crypto.randomUUID', async t => {
+test('retrying a set keeps its ID without crypto.randomUUID', async (t) => {
   withoutRandomUUID(t)
   const sent = []
-  const writer = createSetWriter(async body => {
+  const writer = createSetWriter(async (body) => {
     sent.push(body)
     if (sent.length === 1) throw new Error('Connection lost')
     return { logs: [body] }
@@ -50,10 +50,10 @@ test('retrying a set keeps its ID without crypto.randomUUID', async t => {
   assert.equal(writer.pending, null)
 })
 
-test('different completed sets receive different IDs without crypto.randomUUID', async t => {
+test('different completed sets receive different IDs without crypto.randomUUID', async (t) => {
   withoutRandomUUID(t)
   const ids = []
-  const writer = createSetWriter(async body => {
+  const writer = createSetWriter(async (body) => {
     ids.push(body.requestId)
     return { logs: [] }
   })
@@ -66,17 +66,17 @@ test('different completed sets receive different IDs without crypto.randomUUID',
   assert.notEqual(ids[0], ids[1])
 })
 
-test('fallback sets UUID version and variant bits', async t => {
+test('fallback sets UUID version and variant bits', async (t) => {
   withoutRandomUUID(t)
-  globalThis.crypto.getRandomValues = bytes => bytes.fill(0xff)
-  const writer = createSetWriter(async body => body)
+  globalThis.crypto.getRandomValues = (bytes) => bytes.fill(0xff)
+  const writer = createSetWriter(async (body) => body)
 
   const result = await writer.submit(payload)
 
   assert.equal(result.requestId, 'ffffffff-ffff-4fff-bfff-ffffffffffff')
 })
 
-test('native randomUUID is used when available', async t => {
+test('native randomUUID is used when available', async (t) => {
   withoutRandomUUID(t)
   const expected = '12345678-1234-4234-8234-123456789abc'
   globalThis.crypto.randomUUID = function () {
@@ -84,7 +84,7 @@ test('native randomUUID is used when available', async t => {
     return expected
   }
   globalThis.crypto.getRandomValues = () => assert.fail('Native UUID should be used')
-  const writer = createSetWriter(async body => body)
+  const writer = createSetWriter(async (body) => body)
 
   const result = await writer.submit(payload)
 

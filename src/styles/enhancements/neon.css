@@ -1,0 +1,91 @@
+/* Neon accents are concentrated on actions and active states. */
+:root {
+  --lime: #c8ff58;
+  --neon-rgb: 194, 255, 77;
+  --neon-edge: rgba(var(--neon-rgb), 0.36);
+  --neon-soft: rgba(var(--neon-rgb), 0.09);
+}
+.button.primary {
+  background: linear-gradient(135deg, #d6ff86, #beff48);
+  box-shadow:
+    inset 0 1px 0 #f1ffc36b,
+    0 0 12px rgba(var(--neon-rgb), 0.25),
+    0 0 30px rgba(var(--neon-rgb), 0.12);
+}
+.button.primary:hover {
+  background: linear-gradient(135deg, #e2ffa5, #caff61);
+  box-shadow:
+    inset 0 1px 0 #f1ffc38c,
+    0 0 16px rgba(var(--neon-rgb), 0.36),
+    0 0 40px rgba(var(--neon-rgb), 0.18);
+}
+.hero-card,
+.insight-volume {
+  border-color: var(--neon-edge);
+  box-shadow:
+    inset 0 0 25px rgba(var(--neon-rgb), 0.025),
+    0 0 28px rgba(var(--neon-rgb), 0.055);
+}
+.hero-card::after {
+  border-color: rgba(var(--neon-rgb), 0.18);
+  box-shadow: 0 0 30px rgba(var(--neon-rgb), 0.07);
+}
+.streak-pill {
+  border-color: rgba(var(--neon-rgb), 0.3);
+  box-shadow: 0 0 20px var(--neon-soft);
+}
+.streak-pill strong {
+  text-shadow: 0 0 13px rgba(var(--neon-rgb), 0.38);
+}
+.eyebrow,
+.card-kicker {
+  text-shadow: 0 0 12px rgba(var(--neon-rgb), 0.17);
+}
+.bottom-nav button.active {
+  border-color: rgba(var(--neon-rgb), 0.36);
+  box-shadow:
+    inset 0 0 16px rgba(var(--neon-rgb), 0.06),
+    0 0 17px rgba(var(--neon-rgb), 0.08);
+}
+.bottom-nav button.active .nav-icon,
+.insight-icon svg,
+.insight-record-rank.is-first svg {
+  filter: drop-shadow(0 0 4px rgba(var(--neon-rgb), 0.48));
+}
+.insight-icon,
+.insight-record-rank.is-first {
+  border-color: rgba(var(--neon-rgb), 0.4);
+  box-shadow:
+    inset 0 0 12px rgba(var(--neon-rgb), 0.035),
+    0 0 15px var(--neon-soft);
+}
+.template-card.is-today,
+.chooser-row.is-today {
+  border-color: rgba(var(--neon-rgb), 0.45);
+  box-shadow:
+    inset 0 0 20px rgba(var(--neon-rgb), 0.035),
+    0 0 22px var(--neon-soft);
+}
+.week-board-row.is-today .week-board-dot {
+  box-shadow:
+    0 0 7px rgba(var(--neon-rgb), 0.75),
+    0 0 15px rgba(var(--neon-rgb), 0.3);
+}
+.week-board-row.is-today > span:first-child {
+  border-color: rgba(var(--neon-rgb), 0.36);
+  box-shadow: 0 0 12px var(--neon-soft);
+}
+.week-board-link:hover {
+  box-shadow: 0 0 16px var(--neon-soft);
+}
+input:focus,
+.muscle-select-trigger.is-open,
+.muscle-select-trigger:focus-visible {
+  border-color: var(--lime);
+  box-shadow:
+    0 0 0 3px rgba(var(--neon-rgb), 0.1),
+    0 0 19px rgba(var(--neon-rgb), 0.11);
+}
+.calendar-grid button.has-session > span {
+  box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.2);
+}

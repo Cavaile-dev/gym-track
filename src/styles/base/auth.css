@@ -1,0 +1,110 @@
+.auth-shell {
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: auto;
+  padding: calc(34px + env(safe-area-inset-top)) 25px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+.auth-brand,
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font:
+    700 var(--text-small) ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.08em;
+}
+.auth-panel {
+  margin: auto 0;
+  padding: 32px 0 44px;
+}
+.auth-panel h1 {
+  margin: 13px 0 10px;
+  font-size: var(--text-display);
+}
+.auth-panel > .muted {
+  margin-bottom: 32px;
+}
+.stack-form {
+  display: grid;
+  gap: 18px;
+}
+label {
+  display: grid;
+  gap: 8px;
+  color: #dce4de;
+  font-size: var(--text-small);
+  font-weight: 700;
+}
+.button {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-small);
+  font-weight: 800;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.button:active {
+  transform: scale(0.98);
+}
+.button.primary {
+  background: var(--lime);
+  color: var(--lime-ink);
+}
+.button.primary:hover {
+  background: #d7fa7e;
+}
+.button.secondary {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: #dfe9e1;
+}
+.button.full {
+  width: 100%;
+}
+.text-button {
+  padding: 7px 0;
+  background: transparent;
+  color: var(--lime);
+  font-size: var(--text-small);
+}
+.auth-panel .text-button {
+  display: block;
+  margin: 18px auto 0;
+}
+.auth-foot {
+  color: #58645d;
+  font:
+    var(--text-caption) ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+.auth-foot span {
+  padding: 0 5px;
+  color: #8da344;
+}
+.error-box,
+.form-error {
+  color: #ffb2a7;
+  background: #3a211f;
+  border: 1px solid #713a34;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-size: var(--text-small);
+}
+.app-shell {
+  min-height: 100dvh;
+}

@@ -1,0 +1,18 @@
+export const muscleGroups = [
+  'Chest',
+  'Shoulders',
+  'Lats',
+  'Upper Back',
+  'Lower Back',
+  'Biceps',
+  'Triceps',
+  'Forearms',
+  'Quadriceps',
+  'Hamstrings',
+  'Glutes',
+  'Calves',
+  'Adductors',
+  'Core',
+  'Full Body',
+  'Other',
+]
