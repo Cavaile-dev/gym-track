@@ -238,17 +238,24 @@
 }
 .routine-week.is-compact .routine-day.is-selectable {
   width: 100%;
+  margin: 3px 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
   text-align: left;
   font: inherit;
   color: inherit;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
-.routine-week.is-compact .routine-day.is-selectable:hover {
+.routine-week.is-compact .routine-day.is-selectable:not(.is-selected):hover {
   background: rgba(var(--neon-rgb), 0.04);
 }
 .routine-week.is-compact .routine-day.is-selected {
-  background: rgba(var(--neon-rgb), 0.08);
+  border-color: rgba(var(--neon-rgb), 0.22);
+  background: rgba(var(--neon-rgb), 0.06);
 }
 .routine-week.is-compact .routine-day.is-selected .routine-day-name {
   color: var(--lime);

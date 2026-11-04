@@ -39,19 +39,19 @@ function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
   const targetDone = setNumber > targetSets
   const isLast = exerciseIndex === workout.template.exercises.length - 1
   const isFinalSet = isLast && setNumber === targetSets
-  const previous = workout.previous?.[exercise.id] || null
+  const previousSession = workout.previous?.[exercise.id] || null
+  const previous = previousSession?.sets
+    ? previousSession.sets.find((set) => set.setNumber === Math.min(setNumber, targetSets)) || null
+    : previousSession
   useEffect(() => {
-    const last =
-      editPrefill.current || [...logs].reverse().find((log) => log.exerciseId === exercise.id)
+    const prefill =
+      editPrefill.current ||
+      previous ||
+      [...logs].reverse().find((log) => log.exerciseId === exercise.id)
     editPrefill.current = null
-    if (last) {
-      setWeight(String(last.weight))
-      setReps(String(last.reps))
-    } else {
-      setWeight(previous ? String(previous.weight) : '')
-      setReps(previous ? String(previous.reps) : '')
-    }
-  }, [exercise.id, workout.id])
+    setWeight(prefill ? String(prefill.weight) : '')
+    setReps(prefill ? String(prefill.reps) : '')
+  }, [exercise.id, workout.id, setNumber, targetSets])
   useEffect(() => {
     if (!timer) return
     const interval = setInterval(() => setTimer((value) => Math.max(0, value - 1)), 1000)
@@ -88,8 +88,8 @@ function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
     setError('')
     try {
       const next = await api(`/workouts/${workout.id}/sets/${lastSet.id}`, { method: 'DELETE' })
+      editPrefill.current = lastSet
       if (lastExerciseIndex !== exerciseIndex) {
-        editPrefill.current = lastSet
         const loggedSets = logs.filter((item) => item.exerciseId === lastSet.exerciseId).length
         setExtraSets(
           Math.max(0, loggedSets - workout.template.exercises[lastExerciseIndex].targetSets),
@@ -188,7 +188,7 @@ function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
             </strong>
           ) : (
             <strong className="previous-empty">
-              No previous record <span>· New exercise</span>
+              No previous record <span>· {previousSession ? 'New set' : 'New exercise'}</span>
             </strong>
           )}
         </div>

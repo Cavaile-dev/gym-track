@@ -49,13 +49,13 @@ function activeShape(session) {
     session.id,
   )
   const previous = all(
-    `SELECT exerciseId, weight, reps, finishedAt FROM (
-    SELECT sl.exercise_id AS exerciseId, sl.weight, sl.reps, ws.finished_at AS finishedAt,
-      ROW_NUMBER() OVER(PARTITION BY sl.exercise_id ORDER BY ws.finished_at DESC, ws.id DESC, sl.set_number ASC) AS rank
+    `SELECT exerciseId, setNumber, weight, reps, finishedAt FROM (
+    SELECT sl.exercise_id AS exerciseId, sl.set_number AS setNumber, sl.weight, sl.reps, ws.finished_at AS finishedAt,
+      DENSE_RANK() OVER(PARTITION BY sl.exercise_id ORDER BY ws.finished_at DESC, ws.id DESC) AS rank
     FROM set_logs sl JOIN workout_sessions ws ON ws.id=sl.session_id
     WHERE ws.user_id=? AND ws.template_id=? AND ws.status='finished' AND ws.finished_at<?
       AND sl.exercise_id IN (SELECT exercise_id FROM template_exercises WHERE template_id=?)
-  ) WHERE rank=1`,
+  ) WHERE rank=1 ORDER BY exerciseId, setNumber`,
     session.user_id,
     session.template_id,
     session.started_at,
@@ -66,7 +66,11 @@ function activeShape(session) {
     template,
     startedAt: session.started_at,
     logs,
-    previous: Object.fromEntries(previous.map((entry) => [entry.exerciseId, entry])),
+    previous: previous.reduce((byExercise, entry) => {
+      if (!byExercise[entry.exerciseId]) byExercise[entry.exerciseId] = { ...entry, sets: [] }
+      byExercise[entry.exerciseId].sets.push(entry)
+      return byExercise
+    }, {}),
   }
 }
 

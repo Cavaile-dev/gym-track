@@ -646,14 +646,14 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  border: 1px solid #45513b88;
+  border: 1px solid #bcd3b52e;
   border-radius: 22px;
-  background: #1a221ded;
+  background: linear-gradient(135deg, #ffffff0a, #ffffff02), #1a221d99;
   box-shadow:
     0 10px 40px #0006,
-    0 1px 0 #ffffff05 inset;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+    0 1px 0 #ffffff18 inset;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 .bottom-nav button {
   min-width: 0;
@@ -716,4 +716,64 @@
   color: var(--muted);
   margin-top: 15px;
   font-size: var(--text-small);
+}
+
+/* Liquid glass for the floating mobile navigation. */
+@media (max-width: 1023px) {
+  .app-navigation .bottom-nav {
+    border: 1px solid #ffffff38;
+    border-radius: 28px;
+    background: linear-gradient(165deg, #ffffff18, #ffffff03 45%, #ffffff0a), #15211a40;
+    box-shadow:
+      0 16px 40px #00000052,
+      0 4px 12px #00000024,
+      inset 0 1px 1px #ffffff70,
+      inset 1px 0 1px #ffffff24,
+      inset 0 -1px 1px #ffffff28;
+    backdrop-filter: blur(32px) saturate(190%) brightness(1.12);
+    -webkit-backdrop-filter: blur(32px) saturate(190%) brightness(1.12);
+  }
+  .app-navigation .bottom-nav::before,
+  .app-navigation .bottom-nav::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  .app-navigation .bottom-nav::before {
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 12% 0%, #ffffff26, transparent 48%),
+      radial-gradient(ellipse at 95% 100%, #d9ffe71a, transparent 45%);
+  }
+  .app-navigation .bottom-nav::after {
+    inset: 2px;
+    border: 1px solid #ffffff0d;
+    box-shadow: inset 0 1px 0 #ffffff12;
+  }
+  .app-navigation .bottom-nav > button {
+    position: relative;
+    z-index: 1;
+    border-radius: 21px;
+    color: #c2cec6;
+    text-shadow: 0 1px 3px #00000080;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.15s ease;
+  }
+  .app-navigation .bottom-nav > button.active {
+    color: var(--lime);
+    border-color: rgba(var(--neon-rgb), 0.32);
+    background:
+      linear-gradient(155deg, #ffffff21, #ffffff04 55%, #ffffff0c), rgba(var(--neon-rgb), 0.07);
+    box-shadow:
+      inset 0 1px 1px #ffffff4d,
+      inset 0 -1px 1px #ffffff14,
+      0 3px 10px #0000001f;
+  }
+  .app-navigation .bottom-nav > button:active {
+    transform: scale(0.96);
+  }
 }
