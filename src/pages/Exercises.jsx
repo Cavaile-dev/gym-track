@@ -73,7 +73,6 @@ function Exercises({ data, setData }) {
           <span aria-hidden="true">+</span> Add custom
         </button>
       </div>
-      <p className="intro-copy">Find your movement. Build your next session.</p>
       <div className="library-filters" aria-label="Filter by muscle group">
         {(showAllGroups ? groups : groups.slice(0, 5)).map((item) => (
           <button

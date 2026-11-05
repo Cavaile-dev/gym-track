@@ -1,0 +1,507 @@
+@property --streak-orbit-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+/* Streak rewards stay compact beside the dashboard greeting. */
+.dashboard-heading {
+  align-items: center;
+  gap: 16px;
+}
+.dashboard-heading > :first-child {
+  flex: 1;
+}
+.week-streak {
+  --streak-radius: 17px;
+  --streak-orbit-duration: 6s;
+  border-radius: var(--streak-radius);
+  --streak-color: 194, 255, 77;
+  --streak-aura-opacity: 0.12;
+  --streak-edge: 0.38;
+  --streak-glow: 0.1;
+  position: relative;
+  isolation: isolate;
+  perspective: 650px;
+  width: max-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+  color: rgb(var(--streak-color));
+}
+.week-streak-card {
+  position: relative;
+  z-index: 1;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--streak-color), var(--streak-edge));
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(var(--streak-color), 0.065), transparent 75%), #121c13;
+  box-shadow:
+    inset 0 1px 0 #edffb529,
+    0 0 16px rgba(var(--streak-color), var(--streak-glow));
+  transform: rotateX(var(--streak-tilt-x, 0deg)) rotateY(var(--streak-tilt-y, 0deg));
+  transition: transform 240ms ease-out;
+}
+.week-streak-card::before,
+.week-streak-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.week-streak-card::before {
+  padding: 1px;
+  background: linear-gradient(
+    115deg,
+    transparent 4%,
+    rgba(var(--streak-color), 0.55) 25%,
+    #f1ffd5 49%,
+    transparent 70%,
+    rgba(var(--streak-color), 0.5)
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  opacity: var(--streak-edge);
+}
+.week-streak-card::after {
+  background: radial-gradient(
+    circle at var(--streak-light-x, 50%) var(--streak-light-y, 30%),
+    #efffc51c,
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+.week-streak-aura {
+  position: absolute;
+  z-index: -1;
+  inset: 4px;
+  border-radius: 24px;
+  background: rgb(var(--streak-color));
+  filter: blur(15px);
+  opacity: var(--streak-aura-opacity);
+  animation: streak-aura-breathe 5s ease-in-out infinite;
+  pointer-events: none;
+}
+.week-streak-main {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.week-streak-emblem {
+  width: 36px;
+  height: 40px;
+  filter: drop-shadow(0 0 5px rgba(var(--streak-color), 0.38));
+}
+.week-streak-copy {
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 1px solid rgba(var(--streak-color), 0.25);
+}
+.week-streak-value {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px rgba(var(--streak-color), 0.26);
+}
+.week-streak-milestone {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 6px auto 0;
+  padding: 3px 9px;
+  border: 1px solid rgba(var(--streak-color), 0.3);
+  border-radius: 999px;
+  color: #c0ccae;
+  background: rgba(var(--streak-color), 0.035);
+  font:
+    500 9px/1.3 'DM Mono',
+    monospace;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.week-streak-milestone > span {
+  color: rgb(var(--streak-color));
+}
+.week-streak--month {
+  --streak-aura-opacity: 0.22;
+  --streak-edge: 0.65;
+  --streak-glow: 0.2;
+}
+.week-streak--half-year {
+  --streak-aura-opacity: 0.46;
+  --streak-edge: 1;
+  --streak-glow: 0.45;
+}
+.week-streak--half-year .week-streak-aura {
+  inset: -3px;
+  filter: blur(18px);
+}
+.week-streak--half-year .week-streak-card {
+  box-shadow:
+    inset 0 0 12px rgba(var(--streak-color), 0.1),
+    inset 0 1px 0 #f0ffd280,
+    0 0 8px rgba(var(--streak-color), 0.42),
+    0 0 26px rgba(var(--streak-color), 0.24);
+}
+.week-streak--year {
+  --streak-color: 221, 255, 77;
+  --streak-aura-opacity: 0.65;
+  --streak-edge: 1;
+  --streak-glow: 0.65;
+  --streak-orbit-duration: 4.5s;
+}
+.week-streak--year .week-streak-aura {
+  inset: -5px;
+  filter: blur(21px);
+}
+.week-streak--year .week-streak-card {
+  box-shadow:
+    inset 0 0 16px #eaff6829,
+    inset 0 1px 0 #faffd6cc,
+    0 0 5px #f4ff9db3,
+    0 0 15px #eaff6873,
+    0 0 34px #d5ff584d;
+}
+.week-streak--year .week-streak-value {
+  color: #efffa0;
+}
+/* A moving comet traces the rounded box rather than rotating the badge itself. */
+.week-streak-orbit {
+  position: absolute;
+  z-index: 2;
+  inset: -2px;
+  border-radius: calc(var(--streak-radius) + 2px);
+  filter: drop-shadow(0 0 5px rgba(var(--streak-color), 0.8));
+  pointer-events: none;
+  animation: streak-perimeter-spin var(--streak-orbit-duration) linear infinite;
+}
+.week-streak-orbit::before,
+.week-streak-orbit::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+}
+.week-streak-orbit::before {
+  background: conic-gradient(
+    from var(--streak-orbit-angle),
+    transparent 0deg 200deg,
+    rgba(var(--streak-color), 0.08) 240deg,
+    rgba(var(--streak-color), 0.5) 290deg,
+    rgb(var(--streak-color)) 325deg,
+    #fbffd9 347deg,
+    transparent 359deg
+  );
+}
+.week-streak-orbit::after {
+  display: none;
+}
+.week-streak--year .week-streak-orbit {
+  inset: -3px;
+  border-radius: calc(var(--streak-radius) + 3px);
+  filter: drop-shadow(0 0 4px #f2ff9eb3) drop-shadow(0 0 9px #dfff5859);
+}
+.week-streak--year .week-streak-orbit::before {
+  padding: 2.5px;
+}
+.week-streak--year .week-streak-orbit::after {
+  display: block;
+  inset: -4px;
+  padding: 1px;
+  border-radius: calc(var(--streak-radius) + 7px);
+  opacity: 0.8;
+  background: conic-gradient(
+    from calc(140deg - var(--streak-orbit-angle)),
+    transparent 0deg 235deg,
+    #dfff5814 270deg,
+    #dfff58b3 320deg,
+    #fbffd9 345deg,
+    transparent 359deg
+  );
+}
+.week-streak--half-year .week-streak-emblem,
+.week-streak--year .week-streak-emblem {
+  filter: drop-shadow(0 0 4px rgba(var(--streak-color), 0.65))
+    drop-shadow(0 0 10px rgba(var(--streak-color), 0.2));
+}
+.week-streak--year .week-streak-milestone {
+  border-color: rgba(var(--streak-color), 0.65);
+  background: rgba(var(--streak-color), 0.09);
+  box-shadow: 0 0 10px rgba(var(--streak-color), 0.15);
+  color: #efffc5;
+}
+.week-streak-sparks {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+.week-streak-sparks i {
+  --spark-size: 2px;
+  --spark-cycle: 5.5s;
+  --spark-drift-x: 0px;
+  --spark-drift-y: -2px;
+  position: absolute;
+  width: var(--spark-size);
+  height: var(--spark-size);
+  border-radius: 50%;
+  background: #f0ffa7;
+  opacity: 0.55;
+  box-shadow:
+    0 0 4px #f5ffd6,
+    0 0 10px #e1ff58;
+  animation: streak-spark-glow var(--spark-cycle) ease-in-out infinite;
+  animation-delay: var(--spark-delay, 0s);
+}
+.week-streak-sparks i:nth-child(3n) {
+  --spark-size: 3px;
+  --spark-cycle: 4.6s;
+  --spark-drift-x: 2px;
+  --spark-drift-y: -3px;
+}
+.week-streak-sparks i:nth-child(3n + 1) {
+  --spark-size: 2.5px;
+  --spark-cycle: 6.4s;
+  --spark-drift-x: -2px;
+  --spark-drift-y: 2px;
+}
+.week-streak-sparks i:nth-child(1) {
+  --spark-delay: -0s;
+  top: calc(-5px * var(--spark-spread, 1));
+  left: 12%;
+}
+.week-streak-sparks i:nth-child(2) {
+  --spark-delay: -0.57s;
+  top: calc(-16px * var(--spark-spread, 1));
+  left: 27%;
+}
+.week-streak-sparks i:nth-child(3) {
+  --spark-delay: -1.14s;
+  top: calc(-24px * var(--spark-spread, 1));
+  left: 44%;
+}
+.week-streak-sparks i:nth-child(4) {
+  --spark-delay: -1.71s;
+  top: calc(-11px * var(--spark-spread, 1));
+  left: 64%;
+}
+.week-streak-sparks i:nth-child(5) {
+  --spark-delay: -2.28s;
+  top: calc(-20px * var(--spark-spread, 1));
+  left: 82%;
+}
+.week-streak-sparks i:nth-child(6) {
+  --spark-delay: -2.85s;
+  top: calc(-5px * var(--spark-spread, 1));
+  left: 94%;
+}
+.week-streak-sparks i:nth-child(7) {
+  --spark-delay: -3.42s;
+  top: 18%;
+  right: calc(-8px * var(--spark-spread, 1));
+}
+.week-streak-sparks i:nth-child(8) {
+  --spark-delay: -3.99s;
+  top: 45%;
+  right: calc(-13px * var(--spark-spread, 1));
+}
+.week-streak-sparks i:nth-child(9) {
+  --spark-delay: -4.56s;
+  top: 76%;
+  right: calc(-7px * var(--spark-spread, 1));
+}
+.week-streak-sparks i:nth-child(10) {
+  --spark-delay: -5.13s;
+  bottom: calc(-8px * var(--spark-spread, 1));
+  left: 91%;
+}
+.week-streak-sparks i:nth-child(11) {
+  --spark-delay: -5.7s;
+  bottom: calc(-19px * var(--spark-spread, 1));
+  left: 76%;
+}
+.week-streak-sparks i:nth-child(12) {
+  --spark-delay: -6.27s;
+  bottom: calc(-25px * var(--spark-spread, 1));
+  left: 56%;
+}
+.week-streak-sparks i:nth-child(13) {
+  --spark-delay: -6.84s;
+  bottom: calc(-12px * var(--spark-spread, 1));
+  left: 37%;
+}
+.week-streak-sparks i:nth-child(14) {
+  --spark-delay: -7.41s;
+  bottom: calc(-21px * var(--spark-spread, 1));
+  left: 19%;
+}
+.week-streak-sparks i:nth-child(15) {
+  --spark-delay: -7.98s;
+  bottom: calc(-7px * var(--spark-spread, 1));
+  left: 4%;
+}
+.week-streak-sparks i:nth-child(16) {
+  --spark-delay: -8.55s;
+  top: 73%;
+  left: calc(-10px * var(--spark-spread, 1));
+}
+.week-streak-sparks i:nth-child(17) {
+  --spark-delay: -9.12s;
+  top: 41%;
+  left: calc(-14px * var(--spark-spread, 1));
+}
+.week-streak-sparks i:nth-child(18) {
+  --spark-delay: -9.69s;
+  top: 10%;
+  left: calc(-6px * var(--spark-spread, 1));
+}
+.week-streak--inactive {
+  --streak-color: 140, 160, 135;
+  --streak-edge: 0.25;
+  --streak-glow: 0;
+}
+.week-streak--inactive .week-streak-aura {
+  display: none;
+}
+.week-streak--inactive .week-streak-value {
+  text-shadow: none;
+}
+@keyframes streak-aura-breathe {
+  0%,
+  100% {
+    opacity: calc(var(--streak-aura-opacity) * 0.65);
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: var(--streak-aura-opacity);
+    transform: scale(1.035);
+  }
+}
+@keyframes streak-perimeter-spin {
+  from {
+    --streak-orbit-angle: 0deg;
+  }
+  to {
+    --streak-orbit-angle: 360deg;
+  }
+}
+@keyframes streak-spark-glow {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: translate(0, 0) scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(var(--spark-drift-x), var(--spark-drift-y)) scale(1.15);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .week-streak:hover .week-streak-card {
+    transition-duration: 100ms;
+  }
+  .week-streak:hover .week-streak-card::after {
+    opacity: 1;
+  }
+}
+@media (max-width: 599px) {
+  .week-streak-sparks {
+    --spark-spread: 0.7;
+  }
+  .dashboard-heading {
+    gap: 12px;
+  }
+  .week-streak {
+    --streak-radius: 15px;
+  }
+  .week-streak-card {
+    padding: 9px 10px;
+  }
+  .week-streak-main {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .week-streak-emblem {
+    width: 26px;
+    height: 32px;
+  }
+  .week-streak-copy {
+    padding-left: 8px;
+  }
+  .week-streak-value {
+    font-size: 13px;
+  }
+  .week-streak-milestone {
+    font-size: 7px;
+    gap: 5px;
+    padding: 3px 7px;
+    margin-top: 5px;
+  }
+}
+@media (max-width: 359px) {
+  .dashboard-heading {
+    gap: 10px;
+  }
+  .week-streak-card {
+    padding: 8px;
+  }
+  .week-streak-main {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 6px;
+  }
+  .week-streak-emblem {
+    width: 22px;
+    height: 30px;
+  }
+  .week-streak-copy {
+    padding-left: 6px;
+  }
+  .week-streak-value {
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .week-streak *,
+  .week-streak *::before,
+  .week-streak *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .week-streak .week-streak-card {
+    transform: none !important;
+  }
+}
+html[data-reduce-motion='true'] .week-streak *,
+html[data-reduce-motion='true'] .week-streak *::before,
+html[data-reduce-motion='true'] .week-streak *::after {
+  animation: none !important;
+  transition: none !important;
+}
+html[data-reduce-motion='true'] .week-streak .week-streak-card {
+  transform: none !important;
+}

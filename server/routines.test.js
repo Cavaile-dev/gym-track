@@ -113,6 +113,7 @@ test('weekly routines preserve existing training data and support several sessio
 
   await t.test('migration keeps old session IDs, history, and one default routine', async () => {
     assert.equal(data.routines.length, 1)
+    assert.equal(data.stats.weeklyStreak, 1)
     assert.equal(data.templates[0].id, 222)
     assert.equal(data.templates[0].routineId, originalRoutine)
     assert.equal(data.todaySessions[0].completedToday, true)

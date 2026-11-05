@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useId } from 'react'
 import { createSetWriter, post, api } from '../requests.js'
 import { Transition } from '../components/Transition.jsx'
 import { formatKg, formatDate } from '../utils/format.js'
 import { Stat } from './Dashboard.jsx'
+import { SessionMetaIcon } from '../components/Icons.jsx'
 
 function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
   const [timer, setTimer] = useState(0)
@@ -40,6 +41,9 @@ function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
   const isLast = exerciseIndex === workout.template.exercises.length - 1
   const isFinalSet = isLast && setNumber === targetSets
   const previousSession = workout.previous?.[exercise.id] || null
+  const previousSets =
+    previousSession?.sets ||
+    (previousSession ? [{ ...previousSession, setNumber: previousSession.setNumber || 1 }] : [])
   const previous = previousSession?.sets
     ? previousSession.sets.find((set) => set.setNumber === Math.min(setNumber, targetSets)) || null
     : previousSession
@@ -174,22 +178,47 @@ function Workout({ workout, onFinish, onAbandon, restDuration = 90 }) {
           <p className="workout-label">{workout.template.name}</p>
           <p className="eyebrow">EXERCISE {String(exerciseIndex + 1).padStart(2, '0')}</p>
           <h1>{exercise.name}</h1>
-          <p className="muted">
-            {exercise.muscleGroup} <span className="dot-sep">·</span> Set{' '}
-            {Math.min(setNumber, targetSets)} of {targetSets}
-            {targetDone ? ' complete' : ''}
-          </p>
         </div>
         <div className="previous-card">
-          <span className="muted">LAST SESSION · {workout.template.name}</span>
-          {previous ? (
-            <strong>
-              {previous.weight} kg <span>×</span> {previous.reps} reps
-            </strong>
+          <div className="previous-card-header">
+            <div className="previous-card-title">
+              <span className="previous-card-icon" aria-hidden="true">
+                <SessionMetaIcon type="clock" />
+              </span>
+              <p className="previous-card-heading">LAST SESSION</p>
+            </div>
+            {previousSets.length > 0 && (
+              <span className="previous-card-count">
+                {previousSets.length} {previousSets.length === 1 ? 'SET' : 'SETS'}
+              </span>
+            )}
+          </div>
+          {previousSets.length ? (
+            <ol className="previous-set-list" aria-label="Last session sets">
+              {previousSets.map((set) => {
+                const isCurrent = !targetDone && set.setNumber === setNumber
+                return (
+                  <li
+                    key={set.setNumber}
+                    className={`previous-set${isCurrent ? ' is-current' : ''}`}
+                    aria-current={isCurrent ? 'step' : undefined}
+                  >
+                    <span className="previous-set-number">Set {set.setNumber}</span>
+                    <strong className="previous-set-result">
+                      <span>
+                        {set.weight} <small>kg</small>
+                      </span>
+                      <span className="previous-set-times">×</span>
+                      <span>
+                        {set.reps} <small>reps</small>
+                      </span>
+                    </strong>
+                  </li>
+                )
+              })}
+            </ol>
           ) : (
-            <strong className="previous-empty">
-              No previous record <span>· {previousSession ? 'New set' : 'New exercise'}</span>
-            </strong>
+            <p className="previous-empty">No previous record</p>
           )}
         </div>
         {!targetDone ? (
@@ -312,7 +341,17 @@ function QuickAdjust({ value, values, onChange, disabled = false }) {
             className="quick-adjust-minus"
             aria-label={`Decrease by ${amount}`}
           >
-            <span aria-hidden="true">−</span>
+            <span className="quick-adjust-symbol" aria-hidden="true">
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              >
+                <path d="M5 10h10" />
+              </svg>
+            </span>
             <span>{amount}</span>
           </button>
           <button
@@ -322,7 +361,17 @@ function QuickAdjust({ value, values, onChange, disabled = false }) {
             className="quick-adjust-plus"
             aria-label={`Increase by ${amount}`}
           >
-            <span aria-hidden="true">+</span>
+            <span className="quick-adjust-symbol" aria-hidden="true">
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              >
+                <path d="M5 10h10M10 5v10" />
+              </svg>
+            </span>
             <span>{amount}</span>
           </button>
         </React.Fragment>
@@ -332,14 +381,39 @@ function QuickAdjust({ value, values, onChange, disabled = false }) {
 }
 
 function RestTimer({ timer, duration, setTimer, exercise, setNumber, totalSets }) {
+  const gradientId = useId()
+  const progress = duration > 0 ? Math.min(1, Math.max(0, timer / duration)) : 0
   return (
     <section className="rest-screen">
       <div className="rest-center">
-        <div className="rest-ring" style={{ '--timer-progress': `${(timer / duration) * 360}deg` }}>
+        <div className="rest-ring" role="timer" aria-label={`${timer} seconds remaining`}>
+          <svg className="rest-ring-graphic" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#e0ff88" />
+                <stop offset="45%" stopColor="#a7ef76" />
+                <stop offset="100%" stopColor="#4ed8bf" />
+              </linearGradient>
+            </defs>
+            <circle className="rest-ring-track" cx="100" cy="100" r="90" strokeWidth="6" />
+            <circle
+              className="rest-ring-progress"
+              cx="100"
+              cy="100"
+              r="90"
+              strokeWidth="6"
+              pathLength="100"
+              strokeDasharray="100 100"
+              stroke={`url(#${gradientId})`}
+              transform="rotate(-90 100 100)"
+              style={{ strokeDashoffset: (1 - progress) * 100 }}
+              opacity={progress > 0 ? 1 : 0}
+            />
+          </svg>
           <strong>{timer}</strong>
           <span>seconds</span>
         </div>
-        <h1>Recover.</h1>
+        <h1>Recover</h1>
         <p className="muted">Reset your energy. Make the next set your strongest.</p>
       </div>
       <div className="rest-actions">
@@ -347,21 +421,39 @@ function RestTimer({ timer, duration, setTimer, exercise, setNumber, totalSets }
           <p className="eyebrow">REST TIMER</p>
           <p className="rest-set-context">
             <strong>{exercise}</strong>
-            <span className="dot-sep" aria-hidden="true">
-              ·
-            </span>
             <span className="rest-set-progress">
               Set {setNumber} / {totalSets}
             </span>
           </p>
         </div>
-        <div className="timer-controls">
-          <button className="timer-minus" onClick={() => setTimer(Math.max(0, timer - 15))}>
-            − 15s
-          </button>
-          <button className="timer-plus" onClick={() => setTimer(timer + 15)}>
-            + 15s
-          </button>
+        <div className="timer-controls" role="group" aria-label="Adjust rest time">
+          {[-1, 1].map((direction) => (
+            <button
+              type="button"
+              key={direction}
+              className={`timer-adjust ${direction < 0 ? 'timer-minus' : 'timer-plus'}`}
+              aria-label={direction < 0 ? 'Reduce rest by 15 seconds' : 'Add 15 seconds of rest'}
+              onClick={() => setTimer(Math.max(0, timer + direction * 15))}
+            >
+              <span className="timer-adjust-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                >
+                  <path d="M6 12h12" />
+                  {direction > 0 && <path d="M12 6v12" />}
+                </svg>
+              </span>
+              <span className="timer-adjust-copy">
+                <strong>
+                  15<span>s</span>
+                </strong>
+              </span>
+            </button>
+          ))}
         </div>
         <button className="button primary full" onClick={() => setTimer(0)}>
           Skip rest <span>→</span>

@@ -1,4 +1,4 @@
-import { timeZone, dateContext, dayKey } from '../time.js'
+import { timeZone, dateContext, dayKey, weeklyStreak } from '../time.js'
 import { all, get, run, now } from '../database.js'
 import { fail, text, id, number } from '../validation.js'
 
@@ -116,6 +116,10 @@ function stats(userId, zone) {
       : null,
     records: records.map((record) => ({ ...record })),
     totalDays,
+    weeklyStreak: weeklyStreak(
+      dates.map((entry) => entry.date),
+      zone,
+    ),
   }
 }
 

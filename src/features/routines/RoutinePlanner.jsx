@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react'
 import { api, post } from '../../requests.js'
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 export function WeekPlan({ sessions, onAdd, onEdit, compact = false, selectedDay, onSelectDay }) {
   const Day = onSelectDay ? 'button' : 'div'
@@ -14,7 +15,7 @@ export function WeekPlan({ sessions, onAdd, onEdit, compact = false, selectedDay
         const planned = sessions.filter((session) => session.scheduledDays.includes(index))
         return (
           <Day
-            className={`routine-day${index === today ? ' is-today' : ''}${onSelectDay ? ' is-selectable' : ''}${selectedDay === index ? ' is-selected' : ''}`}
+            className={`routine-day${index === today ? ' is-today' : ''}${onSelectDay ? ' is-selectable' : ''}${selectedDay === index ? ' is-selected' : ''}${planned.length ? ' has-sessions' : ' is-rest'}`}
             key={day}
             type={onSelectDay ? 'button' : undefined}
             aria-pressed={onSelectDay ? selectedDay === index : undefined}
@@ -42,6 +43,23 @@ export function WeekPlan({ sessions, onAdd, onEdit, compact = false, selectedDay
                 <span className="routine-rest">Rest day</span>
               )}
             </SessionList>
+            {compact && onSelectDay && (
+              <>
+                {index === today && <span className="routine-today-badge">Today</span>}
+                <span className="routine-day-arrow" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m8 5 5 5-5 5" />
+                  </svg>
+                </span>
+              </>
+            )}
             {onAdd && (
               <button
                 type="button"
@@ -376,7 +394,7 @@ export function SessionDayPicker({ sessions, day, onAssign, onClose, CloseButton
         <div className="modal-header">
           <div>
             <p className="eyebrow">PLAN YOUR WEEK</p>
-            <h2>Add session to {days[day]}</h2>
+            <h2>Add session to {fullDayNames[day]}</h2>
           </div>
           <CloseButton onClick={close} disabled={busy} />
         </div>
@@ -415,7 +433,7 @@ export function SessionDayPicker({ sessions, day, onAssign, onClose, CloseButton
             {!sessions.length
               ? 'No sessions yet. Use Add session to create one first.'
               : !available.length
-                ? `All sessions in this routine are already scheduled on ${days[day]}.`
+                ? `All sessions in this routine are already scheduled on ${fullDayNames[day]}.`
                 : 'No matching sessions found.'}
           </p>
         )}

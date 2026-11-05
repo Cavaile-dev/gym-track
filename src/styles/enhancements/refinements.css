@@ -35,14 +35,6 @@
   grid-column: 3;
   grid-row: 1 / span 2;
 }
-.previous-card {
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-.previous-card > span {
-  flex: 1 1 140px;
-  overflow-wrap: anywhere;
-}
 .previous-card strong {
   min-width: 0;
   line-height: 1.5;

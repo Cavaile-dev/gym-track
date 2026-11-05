@@ -31,9 +31,11 @@ function History({ data, setData }) {
   const cells = Array.from({ length: Math.ceil((offset + daysInMonth) / 7) * 7 }, (_, index) =>
     index < offset || index >= offset + daysInMonth ? null : index - offset + 1,
   )
-  const sessionByDay = Object.fromEntries(
-    [...sessions].reverse().map((session) => [new Date(session.finishedAt).getDate(), session]),
-  )
+  const sessionByDay = sessions.reduce((byDay, session) => {
+    const day = new Date(session.finishedAt).getDate()
+    ;(byDay[day] ||= []).push(session)
+    return byDay
+  }, {})
   const today = new Date()
   const isCurrentMonth = month === localMonth(today)
   const totalSets = sessions.reduce((sum, session) => sum + session.sets.length, 0)
@@ -59,7 +61,6 @@ function History({ data, setData }) {
           <NavIcon type="history" />
         </span>
       </div>
-      <p className="intro-copy">Every session, a little progress.</p>
       <div className="history-content">
         <div className="history-calendar-card" aria-busy={loading}>
           <div className="month-nav">
@@ -121,7 +122,7 @@ function History({ data, setData }) {
                   disabled={!day || !sessionByDay[day]}
                   aria-label={
                     day
-                      ? `${monthLabel} ${day}${sessionByDay[day] ? ', workout completed, view session' : ', no workouts'}`
+                      ? `${monthLabel} ${day}${sessionByDay[day] ? ', workout completed, view sessions' : ', no workouts'}`
                       : undefined
                   }
                   aria-current={
@@ -175,14 +176,19 @@ function History({ data, setData }) {
           <ModalPresence open={Boolean(selected)} overlay={false}>
             {selected ? (
               <SessionDetail
-                session={selected}
+                key={selected.map((item) => item.id).join('-')}
+                session={selected[0]}
+                sessions={selected}
                 onClose={() => setSelected(null)}
                 onDeleted={async (id) => {
                   setHistory((current) => ({
                     ...current,
                     sessions: current.sessions.filter((item) => item.id !== id),
                   }))
-                  setSelected(null)
+                  setSelected((current) => {
+                    const remaining = current?.filter((item) => item.id !== id) || []
+                    return remaining.length ? remaining : null
+                  })
                   try {
                     setData(await api('/bootstrap'))
                   } catch (e) {
@@ -209,7 +215,7 @@ function History({ data, setData }) {
                     type="button"
                     className="history-row"
                     key={session.id}
-                    onClick={() => setSelected(session)}
+                    onClick={() => setSelected([session])}
                   >
                     <span className="history-date">
                       <strong>{formatDate(session.finishedAt, { day: '2-digit' })}</strong>
@@ -274,7 +280,10 @@ function shiftMonth(value, amount, set) {
   set(localMonth(date))
 }
 
-function SessionDetail({ session, onClose, onDeleted }) {
+function SessionDetail({ session, sessions = [session], onClose, onDeleted }) {
+  const [expandedSessions, setExpandedSessions] = useState({})
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const deletingSession = deleteTarget || session
   const [exerciseHistory, setExerciseHistory] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
@@ -284,18 +293,28 @@ function SessionDetail({ session, onClose, onDeleted }) {
   const closeDelete = () => {
     if (!deleteLock.current) setDeleteOpen(false)
   }
-  const grouped = Object.values(
-    session.sets.reduce((all, set) => {
-      ;(all[set.exerciseId] ||= { id: set.exerciseId, name: set.name, sets: [] }).sets.push(set)
-      return all
-    }, {}),
-  )
+  const grouped = sessions.map((item) => ({
+    session: item,
+    exercises: Object.values(
+      item.sets.reduce((all, set) => {
+        ;(all[set.exerciseId] ||= {
+          id: set.exerciseId,
+          name: set.name,
+          session: item,
+          sets: [],
+        }).sets.push(set)
+        return all
+      }, {}),
+    ),
+  }))
   const showHistory = async (exercise) => {
     setError('')
     try {
       setExerciseHistory({
         ...exercise,
-        ...(await api(`/exercises/${exercise.id}/history?templateId=${session.templateId}`)),
+        ...(await api(
+          `/exercises/${exercise.id}/history?templateId=${exercise.session.templateId}`,
+        )),
       })
     } catch (e) {
       setError(e.message)
@@ -307,9 +326,9 @@ function SessionDetail({ session, onClose, onDeleted }) {
     setDeleting(true)
     setDeleteError('')
     try {
-      await api(`/history/${session.id}`, { method: 'DELETE' })
+      await api(`/history/${deletingSession.id}`, { method: 'DELETE' })
       setDeleteOpen(false)
-      await onDeleted(session.id)
+      await onDeleted(deletingSession.id)
     } catch (e) {
       setDeleteError(e.message)
     } finally {
@@ -324,7 +343,7 @@ function SessionDetail({ session, onClose, onDeleted }) {
           <p className="eyebrow">
             {formatDate(session.finishedAt, { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
-          <h2>{session.name}</h2>
+          <h2>{sessions.length > 1 ? `${sessions.length} sessions` : session.name}</h2>
         </div>
         <CloseButton onClick={onClose} disabled={deleting} />
       </div>
@@ -352,39 +371,79 @@ function SessionDetail({ session, onClose, onDeleted }) {
           })}
         </div>
       ) : (
-        grouped.map((exercise) => (
-          <button
-            className="detail-exercise detail-button"
-            key={exercise.name}
-            onClick={() => showHistory(exercise)}
-          >
-            <strong>{exercise.name}</strong>
-            <div>
-              {exercise.sets.map((set) => (
-                <span key={set.setNumber}>
-                  {set.weight} kg × {set.reps}
-                </span>
-              ))}
-            </div>
-            <small>View progression →</small>
-          </button>
-        ))
+        <div className="history-day-sessions">
+          {grouped.map(({ session: item, exercises }) => {
+            const expanded = Boolean(expandedSessions[item.id])
+            return (
+              <section
+                className="history-day-session"
+                aria-label={`${item.name} session`}
+                key={item.id}
+              >
+                {sessions.length > 1 && (
+                  <header className="history-session-heading">
+                    <h3>{item.name}</h3>
+                    <span>
+                      {formatDate(item.finishedAt, { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </header>
+                )}
+                {(expanded ? exercises : exercises.slice(0, 2)).map((exercise) => (
+                  <button
+                    type="button"
+                    className="detail-exercise detail-button"
+                    key={exercise.id}
+                    onClick={() => showHistory(exercise)}
+                  >
+                    <strong>{exercise.name}</strong>
+                    <div>
+                      {exercise.sets.map((set) => (
+                        <span key={set.setNumber}>
+                          {set.weight} kg × {set.reps}
+                        </span>
+                      ))}
+                    </div>
+                    <small>View progression →</small>
+                  </button>
+                ))}
+                {exercises.length > 2 && (
+                  <button
+                    type="button"
+                    className="button secondary full history-show-all"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedSessions((current) => ({
+                        ...current,
+                        [item.id]: !current[item.id],
+                      }))
+                    }
+                  >
+                    {expanded ? 'Show Less' : 'Show All'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="danger-button session-delete"
+                  aria-label={`Delete session: ${item.name}`}
+                  disabled={deleting}
+                  onClick={() => {
+                    setDeleteTarget(item)
+                    setDeleteError('')
+                    setDeleteOpen(true)
+                  }}
+                >
+                  Delete session
+                </button>
+              </section>
+            )
+          })}
+        </div>
       )}
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
-      <button
-        className="danger-button session-delete"
-        disabled={deleting}
-        onClick={() => {
-          setDeleteError('')
-          setDeleteOpen(true)
-        }}
-      >
-        Delete session
-      </button>
       <ConfirmationDialog
         open={deleteOpen}
         label="Delete history session"
@@ -404,10 +463,10 @@ function SessionDetail({ session, onClose, onDeleted }) {
             <SessionMetaIcon type="calendar" />
           </span>
           <div>
-            <strong>{session.name}</strong>
+            <strong>{deletingSession.name}</strong>
             <span>
-              {formatRecordDate(session.finishedAt)} · {session.sets.length}{' '}
-              {session.sets.length === 1 ? 'set' : 'sets'}
+              {formatRecordDate(deletingSession.finishedAt)} · {deletingSession.sets.length}{' '}
+              {deletingSession.sets.length === 1 ? 'set' : 'sets'}
             </span>
           </div>
         </div>

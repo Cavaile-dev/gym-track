@@ -54,41 +54,94 @@
   -webkit-appearance: none;
   margin: 0;
 }
+.quick-adjust .quick-adjust-minus {
+  --quick-color: 255, 170, 148;
+}
+.quick-adjust .quick-adjust-plus {
+  --quick-color: 145, 237, 181;
+}
 .quick-adjust button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 0 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid rgba(var(--quick-color), 0.18);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #ffffff05, transparent), rgba(var(--quick-color), 0.04);
+  color: rgb(var(--quick-color));
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 #ffffff05;
   transition:
-    background 0.2s,
-    border-color 0.2s,
-    box-shadow 0.2s;
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
 }
 .input-row .quick-adjust button span {
   margin: 0;
   color: inherit;
   font: inherit;
 }
-.quick-adjust .quick-adjust-minus {
-  color: #ff9690;
-  border-color: #683b39;
-  background: #30211f;
+.input-row .quick-adjust .quick-adjust-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--quick-color), 0.2);
+  background: rgba(var(--quick-color), 0.09);
 }
-.quick-adjust .quick-adjust-plus {
-  color: #a4ebac;
-  border-color: #365d40;
-  background: #1b3023;
+.quick-adjust-symbol svg {
+  width: 12px;
+  height: 12px;
 }
-.quick-adjust .quick-adjust-minus:active {
-  color: #ffb4af;
-  border-color: var(--red);
-  background: #492925;
+.quick-adjust button:focus-visible {
+  outline: 2px solid rgb(var(--quick-color));
+  outline-offset: 2px;
 }
-.quick-adjust .quick-adjust-plus:active {
-  color: #c2ffcb;
-  border-color: #84e398;
-  background: #25472f;
+.quick-adjust button:not(:disabled):active {
+  transform: scale(0.96);
+  border-color: rgba(var(--quick-color), 0.6);
+  background: rgba(var(--quick-color), 0.13);
+}
+@container quick-adjust (max-width: 150px) {
+  .quick-adjust button {
+    padding: 0 4px;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .input-row .quick-adjust .quick-adjust-symbol {
+    width: 14px;
+    height: 14px;
+  }
+  .quick-adjust-symbol svg {
+    width: 10px;
+    height: 10px;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .quick-adjust button:not(:disabled):hover {
+    border-color: rgba(var(--quick-color), 0.45);
+    background: rgba(var(--quick-color), 0.09);
+    box-shadow: 0 0 14px rgba(var(--quick-color), 0.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-adjust button {
+    transition: none;
+    transform: none !important;
+    translate: none !important;
+  }
+}
+html[data-reduce-motion='true'] .quick-adjust button {
+  transform: none !important;
+  translate: none !important;
 }
 .leave-workout-sheet .eyebrow {
   color: var(--red);
@@ -112,17 +165,106 @@
     background: #3c2422;
     box-shadow: 0 0 18px #ff756d1f;
   }
-  .quick-adjust .quick-adjust-minus:not(:disabled):hover {
-    border-color: var(--red);
-    background: #492925;
-  }
-  .quick-adjust .quick-adjust-plus:not(:disabled):hover {
-    border-color: #84e398;
-    background: #25472f;
-  }
   .button.danger:not(:disabled):hover {
     background: #a3483f;
     border-color: #ff968a;
     box-shadow: 0 0 20px #ff756d26;
   }
+}
+
+/* Larger, paired time adjustments on the recovery screen. */
+.rest-actions .timer-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 0;
+}
+.rest-actions .timer-controls .timer-minus {
+  --adjust-color: 255, 174, 150;
+}
+.rest-actions .timer-controls .timer-plus {
+  --adjust-color: 139, 238, 189;
+}
+.rest-actions .timer-controls .timer-adjust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 12px;
+  border: 1px solid rgba(var(--adjust-color), 0.22);
+  border-radius: 15px;
+  color: #e8f0e8;
+  background: linear-gradient(145deg, #ffffff08, transparent 70%), rgba(var(--adjust-color), 0.055);
+  box-shadow: inset 0 1px 0 #ffffff09;
+  text-align: left;
+  font-family: inherit;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+.timer-adjust-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(var(--adjust-color), 0.22);
+  border-radius: 50%;
+  color: rgb(var(--adjust-color));
+  background: rgba(var(--adjust-color), 0.1);
+}
+.timer-adjust-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.timer-adjust-copy {
+  display: grid;
+  gap: 3px;
+}
+.timer-adjust-copy strong {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.timer-adjust-copy strong > span {
+  margin-left: 2px;
+  color: #adbeb0;
+  font-size: 13px;
+  font-weight: 400;
+}
+.rest-actions .timer-controls .timer-adjust:focus-visible {
+  outline: 2px solid rgb(var(--adjust-color));
+  outline-offset: 4px;
+}
+.rest-actions .timer-controls .timer-adjust:active {
+  transform: scale(0.96);
+  border-color: rgba(var(--adjust-color), 0.65);
+  background: rgba(var(--adjust-color), 0.16);
+  box-shadow: inset 0 0 12px rgba(var(--adjust-color), 0.06);
+}
+@media (hover: hover) and (pointer: fine) {
+  .rest-actions .timer-controls .timer-adjust:hover {
+    border-color: rgba(var(--adjust-color), 0.5);
+    background: linear-gradient(145deg, #ffffff0c, transparent 70%), rgba(var(--adjust-color), 0.1);
+    box-shadow:
+      inset 0 1px 0 #ffffff12,
+      0 0 18px rgba(var(--adjust-color), 0.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rest-actions .timer-controls .timer-adjust {
+    transition: none;
+    transform: none;
+    translate: none;
+  }
+}
+html[data-reduce-motion='true'] .rest-actions .timer-controls .timer-adjust {
+  transition: none !important;
+  transform: none !important;
+  translate: none !important;
 }

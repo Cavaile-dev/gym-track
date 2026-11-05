@@ -85,3 +85,19 @@ export function monthBounds(month, zone) {
   if (year < 2000 || year > 2200) return null
   return [midnight(year, number, 1, zone), midnight(year, number + 1, 1, zone)]
 }
+
+export function weeklyStreak(dates, zone, date = new Date()) {
+  const trainedWeeks = new Set(dates.map((value) => weekKey(value, zone)))
+  // Walk calendar week keys in UTC so daylight-saving changes cannot shift a week.
+  const week = new Date(weekKey(date, zone) + 'T00:00:00.000Z')
+  const key = () => week.toISOString().slice(0, 10)
+  const previousWeek = () => week.setUTCDate(week.getUTCDate() - 7)
+  // This week's workout can still be completed before the week ends.
+  if (!trainedWeeks.has(key())) previousWeek()
+  let streak = 0
+  while (trainedWeeks.has(key())) {
+    streak += 1
+    previousWeek()
+  }
+  return streak
+}

@@ -98,11 +98,40 @@ test('workout inputs follow the matching set from the last session', async (t) =
         assert.equal(input('Weight in kilograms')?.value, String(weight))
         assert.equal(input('Repetitions')?.value, String(reps))
       },
+      expectHistory(reps, currentSet) {
+        const rows = [...container.querySelectorAll('.previous-set')]
+        assert.deepEqual(
+          rows.map((row) => Number(row.textContent.match(/(\d+) reps/)[1])),
+          reps,
+        )
+        assert.equal(container.querySelector('.previous-card-heading').textContent, 'LAST SESSION')
+        const highlighted = rows.filter((row) => row.getAttribute('aria-current') === 'step')
+        assert.equal(highlighted.length, currentSet === null ? 0 : 1)
+        if (currentSet !== null)
+          assert.equal(
+            highlighted[0].querySelector('.previous-set-number').textContent,
+            `Set ${currentSet}`,
+          )
+      },
       expectPrevious(weight, reps) {
+        assert.equal(container.querySelectorAll('.previous-set[aria-current="step"]').length, 1)
         assert.match(
-          container.querySelector('.previous-card').textContent,
+          container.querySelector('.previous-set[aria-current="step"]').textContent,
           new RegExp(`${weight} kg.*${reps} reps`),
         )
+      },
+      expectRest(seconds, duration = 90) {
+        assert.equal(container.querySelector('.rest-center h1').textContent, 'Recover')
+        assert.equal(container.querySelector('.rest-ring strong').textContent, String(seconds))
+        assert.equal(container.querySelector('.rest-set-context .dot-sep'), null)
+        assert.match(
+          container.querySelector('.rest-set-context').textContent,
+          /Bench Press.*Set 2 \/ 3/,
+        )
+        const arc = container.querySelector('.rest-ring-progress')
+        assert.ok(arc)
+        const expected = (1 - Math.min(1, Math.max(0, seconds / duration))) * 100
+        assert.ok(Math.abs(Number(arc.style.strokeDashoffset) - expected) < 0.000001)
       },
       async change(label, value) {
         await act(() => {
@@ -114,8 +143,9 @@ test('workout inputs follow the matching set from the last session', async (t) =
         })
       },
       async click(text) {
-        const button = [...container.querySelectorAll('button')].find((item) =>
-          item.textContent.includes(text),
+        const button = [...container.querySelectorAll('button')].find(
+          (item) =>
+            item.textContent.includes(text) || item.getAttribute('aria-label')?.includes(text),
         )
         assert.ok(button, `Missing button: ${text}`)
         await act(() => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
@@ -128,14 +158,24 @@ test('workout inputs follow the matching set from the last session', async (t) =
     async (t) => {
       const ui = await mount(t)
       ui.expectValues(25, 12)
+      await ui.click('Increase by 0.25')
+      ui.expectValues(25.25, 12)
+      await ui.click('Decrease by 0.25')
+      await ui.click('Increase by 5')
+      ui.expectValues(25, 17)
+      await ui.click('Decrease by 5')
+      ui.expectValues(25, 12)
+      ui.expectHistory([12, 10, 8], 1)
       await ui.change('Weight in kilograms', 27.5)
       await ui.change('Repetitions', 11)
       await ui.click('Log set')
       ui.expectValues(25, 10)
       ui.expectPrevious(25, 10)
+      ui.expectHistory([12, 10, 8], 2)
       await ui.click('Log set')
       ui.expectValues(25, 8)
       ui.expectPrevious(25, 8)
+      ui.expectHistory([12, 10, 8], 3)
       await ui.click('Log set')
       assert.deepEqual(
         ui.submitted.map(({ weight, reps }) => [Number(weight), Number(reps)]),
@@ -145,8 +185,10 @@ test('workout inputs follow the matching set from the last session', async (t) =
           [25, 8],
         ],
       )
+      ui.expectHistory([12, 10, 8], null)
       await ui.click('Add set')
       ui.expectValues(25, 8)
+      ui.expectHistory([12, 10, 8], null)
     },
   )
   await t.test(
@@ -170,12 +212,25 @@ test('workout inputs follow the matching set from the last session', async (t) =
       ui.expectValues(25, 10)
     },
   )
-  await t.test('rest timer returns to the next historical set', async (t) => {
-    const ui = await mount(t, {}, 90)
-    await ui.click('Log set')
-    await ui.click('Skip rest')
-    ui.expectValues(25, 10)
-  })
+  await t.test(
+    'rest timer updates the arc, adjusts seconds, and returns to the next historical set',
+    async (t) => {
+      const ui = await mount(t, {}, 90)
+      t.mock.timers.enable({ apis: ['setInterval'] })
+      await ui.click('Log set')
+      ui.expectRest(90)
+      await act(() => t.mock.timers.tick(1000))
+      ui.expectRest(89)
+      await ui.click('Reduce rest by 15 seconds')
+      ui.expectRest(74)
+      await ui.click('Add 15 seconds of rest')
+      ui.expectRest(89)
+      await ui.click('Add 15 seconds of rest')
+      ui.expectRest(104)
+      await ui.click('Skip rest')
+      ui.expectValues(25, 10)
+    },
+  )
   await t.test('extra sets without history use the last actual values', async (t) => {
     const ui = await mount(t, {
       logs: [

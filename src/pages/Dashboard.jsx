@@ -1,3 +1,4 @@
+import { WeeklyStreak } from '../components/WeeklyStreak.jsx'
 import { SessionChooser } from '../components/SessionChooser.jsx'
 import React, { useState } from 'react'
 import { weekdays } from '../config.js'
@@ -27,9 +28,11 @@ function Dashboard({ data, user, onStart, setPage }) {
   const routineSessions = data.templates.filter(
     (template) => template.routineId === data.activeRoutineId,
   )
+  const trainingDays = new Set(routineSessions.flatMap((session) => session.scheduledDays)).size
+  const restDays = 7 - trainingDays
   return (
     <section className="screen dashboard-screen">
-      <div className="screen-heading">
+      <div className="screen-heading dashboard-heading">
         <div>
           <p className="eyebrow">
             {new Intl.DateTimeFormat('en', {
@@ -40,10 +43,7 @@ function Dashboard({ data, user, onStart, setPage }) {
           </p>
           <h1>Hey, {user.username}.</h1>
         </div>
-        <div className="streak-pill">
-          <strong>{data.stats.totalDays}</strong>
-          <span>TOTAL DAYS</span>
-        </div>
+        <WeeklyStreak weeks={data.stats.weeklyStreak ?? 0} />
       </div>
       <div className="dashboard-board">
         {active ? (
@@ -130,7 +130,13 @@ function Dashboard({ data, user, onStart, setPage }) {
         )}
         <aside className="week-board">
           <div className="week-board-heading">
-            <h2>Your Training Week</h2>
+            <span className="week-board-icon" aria-hidden="true">
+              <NavIcon type="schedule" />
+            </span>
+            <div>
+              <h2>Your Training Week</h2>
+              <p className="week-board-summary">{`${trainingDays} training ${trainingDays === 1 ? 'day' : 'days'} · ${restDays} rest ${restDays === 1 ? 'day' : 'days'}`}</p>
+            </div>
           </div>
           <WeekPlan
             sessions={routineSessions}
@@ -183,7 +189,7 @@ function Dashboard({ data, user, onStart, setPage }) {
 }
 
 function DashboardInsights({ stats }) {
-  const delta = stats.volumeDelta
+  const delta = stats.volumeDelta ?? null
   return (
     <div className="dashboard-insights">
       <section aria-labelledby="glance-title">
@@ -197,7 +203,10 @@ function DashboardInsights({ stats }) {
               <span className="insight-icon">
                 <DashboardInsightIcon type="volume" />
               </span>
-              <span>Total volume</span>
+              <span className="insight-volume-heading">
+                <span>Total volume</span>
+                <small>This week so far</small>
+              </span>
             </div>
             <div className="insight-volume-value">
               <strong>{Number(stats.volume || 0).toLocaleString()}</strong>
@@ -208,7 +217,13 @@ function DashboardInsights({ stats }) {
                 <span className="insight-no-comparison">Your training volume this week</span>
               ) : (
                 <>
+                  <span className="insight-comparison-label">vs last full week</span>
                   <span
+                    aria-label={
+                      delta === 0
+                        ? 'Unchanged from last full week'
+                        : `${Math.abs(delta)}% ${delta < 0 ? 'lower' : 'higher'} than last full week`
+                    }
                     className={`insight-change${delta < 0 ? ' is-down' : delta === 0 ? ' is-flat' : ''}`}
                   >
                     <svg
@@ -221,36 +236,49 @@ function DashboardInsights({ stats }) {
                       aria-hidden="true"
                     >
                       <path
-                        d={delta < 0 ? 'M3 5l5 5 5-5' : delta === 0 ? 'M3 8h10' : 'M3 10l5-5 5 5'}
+                        d={
+                          delta < 0
+                            ? 'M4 4l8 8M4 12h8V4'
+                            : delta === 0
+                              ? 'M3 8h10'
+                              : 'M4 12l8-8M4 4h8v8'
+                        }
                       />
                     </svg>
                     {delta > 0 ? '+' : ''}
                     {delta}%
                   </span>
-                  <span>vs last week</span>
                 </>
               )}
             </div>
           </div>
-          <div className="insight-count">
+          <div className="insight-count is-week">
             <div className="insight-stat-label">
-              <DashboardInsightIcon type="workout" />
+              <span className="insight-count-icon">
+                <DashboardInsightIcon type="workout" />
+              </span>
               <span>This Week</span>
             </div>
-            <strong>{stats.workoutsWeek}</strong>
-            <span className="insight-count-unit">
-              {stats.workoutsWeek === 1 ? 'workout' : 'workouts'}
-            </span>
+            <div className="insight-count-value">
+              <strong>{stats.workoutsWeek}</strong>
+              <span className="insight-count-unit">
+                {stats.workoutsWeek === 1 ? 'workout' : 'workouts'}
+              </span>
+            </div>
           </div>
-          <div className="insight-count">
+          <div className="insight-count is-month">
             <div className="insight-stat-label">
-              <SessionMetaIcon type="calendar" />
+              <span className="insight-count-icon">
+                <SessionMetaIcon type="calendar" />
+              </span>
               <span>This Month</span>
             </div>
-            <strong>{stats.workoutsMonth}</strong>
-            <span className="insight-count-unit">
-              {stats.workoutsMonth === 1 ? 'workout' : 'workouts'}
-            </span>
+            <div className="insight-count-value">
+              <strong>{stats.workoutsMonth}</strong>
+              <span className="insight-count-unit">
+                {stats.workoutsMonth === 1 ? 'workout' : 'workouts'}
+              </span>
+            </div>
           </div>
         </div>
       </section>

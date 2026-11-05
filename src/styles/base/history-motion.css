@@ -588,3 +588,36 @@
   background: transparent;
   font-size: 24px;
 }
+
+.history-day-sessions {
+  display: grid;
+  gap: 16px;
+}
+.history-day-session {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #111a1240;
+}
+.history-session-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+.history-session-heading h3 {
+  min-width: 0;
+  color: #e1e9dc;
+  font-size: var(--text-body);
+  overflow-wrap: anywhere;
+}
+.history-session-heading > span {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.history-show-all {
+  margin: 12px 0;
+}

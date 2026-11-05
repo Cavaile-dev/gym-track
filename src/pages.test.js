@@ -55,6 +55,20 @@ test('all main pages render after module extraction', async (t) => {
       assert.ok(markup.includes(expected))
     })
   }
+  await t.test('dashboard shows consecutive training weeks instead of lifetime days', async () => {
+    const { Dashboard } = await vite.ssrLoadModule('/src/pages/Dashboard.jsx')
+    const markup = renderToString(
+      React.createElement(Dashboard, {
+        data: { ...data, stats: { ...data.stats, totalDays: 40, weeklyStreak: 3 } },
+        user,
+        onStart: noop,
+        setPage: noop,
+      }),
+    )
+    assert.ok(markup.includes('aria-label="3 consecutive weeks of workouts"'))
+    assert.ok(markup.includes('3 WEEKS STREAK'))
+    assert.ok(!markup.includes('TOTAL DAYS'))
+  })
   await t.test('dashboard celebrates only when every scheduled session is completed', async () => {
     const { Dashboard } = await vite.ssrLoadModule('/src/pages/Dashboard.jsx')
     const completed = { ...template, completedToday: true }
