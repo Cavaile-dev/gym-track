@@ -3,8 +3,8 @@ import { post } from '../requests.js'
 import { logo } from '../config.js'
 import { NavIcon } from '../components/Icons.jsx'
 
-function Auth({ onLogin }) {
-  const [mode, setMode] = useState('login')
+function Auth({ onLogin, initialMode = 'login', onBack, onModeChange }) {
+  const [mode, setMode] = useState(initialMode)
   const [form, setForm] = useState({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -28,6 +28,11 @@ function Auth({ onLogin }) {
   }
   return (
     <main className="auth-shell">
+      {onBack && (
+        <button type="button" className="auth-back" onClick={onBack}>
+          <span aria-hidden="true">←</span> Back to Gym Track
+        </button>
+      )}
       <div className="auth-brand">
         <img className="brand-image" src={logo} alt="Gym Track" />
         <span>GYM TRACK</span>
@@ -119,7 +124,9 @@ function Auth({ onLogin }) {
           className="text-button"
           disabled={busy}
           onClick={() => {
-            setMode(mode === 'login' ? 'register' : 'login')
+            const nextMode = mode === 'login' ? 'register' : 'login'
+            if (onModeChange) onModeChange(nextMode)
+            else setMode(nextMode)
             setError('')
           }}
         >

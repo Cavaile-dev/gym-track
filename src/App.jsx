@@ -8,6 +8,7 @@ import {
 import { api, post, mutateAndRefresh } from './requests.js'
 import { logo } from './config.js'
 import { Auth } from './pages/Auth.jsx'
+import { Landing } from './pages/Landing.jsx'
 import { Workout } from './pages/Workout.jsx'
 import { Layout } from './components/Layout.jsx'
 import { Dashboard } from './pages/Dashboard.jsx'
@@ -18,13 +19,28 @@ import { Profile, Settings } from './features/account/Account.jsx'
 import { ModalPresence } from './components/Modal.jsx'
 import { Transition } from './components/Transition.jsx'
 
+function readAuthMode() {
+  if (typeof window === 'undefined') return null
+  return window.location.hash === '#login'
+    ? 'login'
+    : window.location.hash === '#signup'
+      ? 'register'
+      : null
+}
+
 function App() {
   const [user, setUser] = useState(undefined)
+  const [authMode, setAuthMode] = useState(readAuthMode)
   const [data, setData] = useState(null)
   const [page, setPage] = useState('dashboard')
   const [workout, setWorkout] = useState(null)
   const [loading, setLoading] = useState(true)
   const [preferences, setPreferences] = useState(defaultPreferences)
+  useEffect(() => {
+    const onHashChange = () => setAuthMode(readAuthMode())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
   useEffect(() => {
     setPreferences(user ? readPreferences(user.id) : { ...defaultPreferences })
   }, [user?.id])
@@ -91,6 +107,9 @@ function App() {
     const nextData = await api('/bootstrap')
     setData(nextData)
     setUser(nextUser)
+    setPage('dashboard')
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    setAuthMode(null)
   }
   const logout = () =>
     perform(async () => {
@@ -166,7 +185,21 @@ function App() {
       </main>
     )
   const content = !user ? (
-    <Auth onLogin={login} />
+    authMode ? (
+      <Auth
+        key={authMode}
+        initialMode={authMode}
+        onLogin={login}
+        onBack={() => {
+          window.location.hash = ''
+        }}
+        onModeChange={(mode) => {
+          window.location.hash = mode === 'register' ? 'signup' : 'login'
+        }}
+      />
+    ) : (
+      <Landing />
+    )
   ) : workout ? (
     <Workout
       key={workout.id}
@@ -207,7 +240,7 @@ function App() {
         </div>
       )}
       <Transition
-        transitionKey={!user ? 'auth' : workout ? 'workout' : 'app'}
+        transitionKey={!user ? authMode || 'landing' : workout ? 'workout' : 'app'}
         resetScroll
         className="app-transition"
       >
